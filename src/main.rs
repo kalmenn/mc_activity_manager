@@ -1,11 +1,48 @@
-use std::net::{TcpListener, TcpStream};
+use std::time::{Instant, Duration};
+use std::net::{TcpListener, TcpStream, SocketAddr};
+use std::collections::{HashMap};
+
+#[derive(Debug)]
+struct Client {
+    request_state: RequestState,
+    last_seen: Instant
+}
+
+impl Client {
+    fn new() -> Client {
+        return Client {
+            request_state: RequestState::Handshake,
+            last_seen: Instant::now()
+        };
+    }
+}
 
 fn main() {
+    let mut clients = HashMap::<SocketAddr, Client>::new();
+
     let listener = TcpListener::bind("127.0.0.1:6969").unwrap();
 
     for stream in listener.incoming() {
         let stream = stream.unwrap();
-        handle_connection(stream);
+
+        clients.retain(|_, Client{ request_state: _, last_seen }| last_seen.elapsed() < Duration::from_secs(5));
+
+        let addr = stream.peer_addr().unwrap();
+
+        let client = match clients.get_mut(&addr) {
+            None => {
+                clients.insert(addr, Client::new());
+                clients.get_mut(&addr).unwrap()
+            },
+            Some(client) => {
+                client.last_seen = Instant::now();
+                client
+            }
+        };
+
+        handle_connection(stream, client);
+
+        println!("current cached clients: {:?}", &clients);
     }
 }
 
@@ -51,7 +88,7 @@ enum RequestState {
     Handshake
 }
 
-fn handle_connection(mut stream: TcpStream) {
+fn handle_connection(mut stream: TcpStream, client: &mut Client) {
     println!("request from {}\n", &stream.peer_addr().unwrap());
 
     let mut packet = Packet::empty();
