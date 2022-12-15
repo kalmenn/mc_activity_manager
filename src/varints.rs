@@ -1,6 +1,7 @@
 use bitvec::prelude::*;
 
-pub fn into_varint(number: u64) -> Vec<u8> {
+pub fn into_varint<I>(number: I) -> Vec<u8> 
+where I: BitStore {
     let bits = number.view_bits::<Lsb0>();
 
     let mut bytes: Vec<u8> = vec![0; (bits.len() + 6) / 7];
@@ -20,12 +21,25 @@ pub fn into_varint(number: u64) -> Vec<u8> {
     .map(|byte| byte.1)
     .collect();
 
-    bytes.reverse();
-
     // Add continuation bits
     for i in 0..bytes.len()-1 {
         bytes[i] += 128;
     }
 
     return bytes;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::into_varint;
+
+    #[test]
+    fn cool_test() {
+        let varint = into_varint(968_usize);
+        let expect: Vec<u8> = vec!(0b11001000, 0b00000111);
+        assert_eq!(
+            expect,
+            varint
+        );
+    }
 }
