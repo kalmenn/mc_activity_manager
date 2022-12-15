@@ -14,7 +14,7 @@ fn main() {
     for stream in listener.incoming() {
         let stream = stream.unwrap();
 
-        clients.prune(10);
+        clients.prune(2);
 
         let addr = stream.peer_addr().unwrap();
         let client = match clients.cache(addr) {
@@ -26,6 +26,6 @@ fn main() {
         };
 
         handle_connection(stream, client);
-        println!("current cached clients: {:?}", &clients);
+        println!("current cached clients: {:#?}", &clients);
     }
 }
