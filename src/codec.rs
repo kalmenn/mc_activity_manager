@@ -1,8 +1,8 @@
-// https://thepacketgeek.com/rust/tcpstream/lines-codec/
+// Derived from: https://thepacketgeek.com/rust/tcpstream/lines-codec/
 
 use std::io::{self, Write, Read};
 use std::net::TcpStream;
-use crate::varints::into_varint;
+use crate::varint::into_varint;
 
 /// Handles reading and writing of packets. 
 pub struct Codec {

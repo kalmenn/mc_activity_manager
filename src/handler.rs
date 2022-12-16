@@ -1,10 +1,9 @@
 use std::{io, net::TcpStream};
 
-use crate::varints::into_varint;
+use crate::varint::into_varint;
 use crate::codec::Codec;
 
-#[derive(Debug)]
-pub enum RequestState {
+enum RequestState {
     Handshake,
     Login,
     Status
