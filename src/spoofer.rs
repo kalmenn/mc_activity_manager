@@ -1,4 +1,4 @@
-use std::{io, net::TcpStream};
+use std::{io, net::{TcpStream, TcpListener}};
 
 use crate::varint::into_varint;
 use crate::codec::Codec;
@@ -8,15 +8,37 @@ pub enum Request {
     Start
 }
 
+pub fn listen() {
+    let listener = TcpListener::bind("127.0.0.1:6969").unwrap();
+    println!("\x1b[38;2;0;200;0mSpoofer listening on port 6969\x1b[0m");
+    
+    for stream in listener.incoming() {
+        let stream = match stream {
+            Ok(stream) => stream,
+            Err(e) => {
+                println!("Skipped connection on error: {:?}", e);
+                continue;
+            }
+        };
+        match handle_connection(stream) {
+            Ok(request) => {
+                println!("╰ Connection closed");
+                if let Request::Start = request {break};
+            },
+            Err(err) => println!("╰ Killed connection on error: {}", err)
+        }
+    }
+}
+
 enum RequestState {
     Handshake,
     Login,
     Status
 }
 
-pub fn handle_connection(stream: TcpStream) -> io::Result<Request>{
+fn handle_connection(stream: TcpStream) -> io::Result<Request>{
     let address = format!("\x1b[38;5;14m{}\x1b[0m", &stream.peer_addr()?);
-    println!("╭ Request from {}", address);
+    println!("\n╭ Request from {}", address);
 
     let status = |status: &str| {
         println!("│ {} → {}", address, status);
