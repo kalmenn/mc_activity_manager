@@ -13,10 +13,20 @@ pub enum RequestState {
 
 pub fn handle_connection(stream: TcpStream) -> io::Result<()>{
     println!("request from {}", &stream.peer_addr().unwrap());
-
+    
     let mut codec = Codec::new(stream)?;
     loop {
         println!("got packet: {:?}", codec.read_message()?.iter().map(|byte| format!("{:#x}", byte)).collect::<Vec<String>>());
+
+        let mut text = "{\"previewsChat\":false,\"enforcesSecureChat\":true,\"description\":{\"text\":\"Currently offline ...\",\"color\":\"red\"},\"players\":{\"max\":0,\"online\":0},\"version\":{\"name\":\"1.19.2\",\"protocol\":760}}"
+        .as_bytes().to_vec();
+
+        let mut message = Vec::<u8>::new();
+        message.push(0);
+        message.append(&mut into_varint(text.len()));
+        message.append(&mut text);
+
+        codec.send_message(message)?;
 
         // match &client.request_state {
         //     RequestState::Handshake => {
