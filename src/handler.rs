@@ -3,15 +3,24 @@ use std::{io, net::TcpStream};
 use crate::varint::into_varint;
 use crate::codec::Codec;
 
+pub enum Request {
+    Status,
+    Start
+}
+
 enum RequestState {
     Handshake,
     Login,
     Status
 }
 
-pub fn handle_connection(stream: TcpStream) -> io::Result<()>{
+pub fn handle_connection(stream: TcpStream) -> io::Result<Request>{
     let address = format!("\x1b[38;5;14m{}\x1b[0m", &stream.peer_addr()?);
-    println!("\nRequest from {}", address);
+    println!("Request from {}", address);
+
+    let status = |status: &str| {
+        println!("| {} → {}", address, status);
+    };
 
     let mut request_state = RequestState::Handshake;
 
@@ -21,27 +30,27 @@ pub fn handle_connection(stream: TcpStream) -> io::Result<()>{
 
         match request_state {
             RequestState::Handshake => {
-                println!("| {} → State: Handshaking", address);
+                status("State: Handshaking");
                 match &message.iter().last() {
                     Some(1) => {
                         request_state = RequestState::Status;
-                        println!("| {} → Switching state to: Status", address);
+                        status("Switching state to: Status");
                     },
                     Some(2) => {
                         request_state = RequestState::Login;
-                        println!("| {} → Switching state to: Login", address);
+                        status("Switching state to: Login");
                     }
                     _ => {
-                        println!("| {} → Garbled packet", address);
+                        status("Garbled packet");
                         return Err(io::Error::from(io::ErrorKind::InvalidData));
                     }
                 }
             },
             RequestState::Status => {
-                println!("| {} → State: Status", address);
+                status("State: Status");
                 match &message[0] {
                     0 => {
-                        println!("| {} → Requested status", address);
+                        status("Requested status");
                         let mut text = "{\"description\":[{\"text\":\"Hors Ligne ...\n\",\"color\":\"gold\"},{\"text\":\"Connectez vous pour démarrer le serveur\",\"color\":\"dark_green\"}],\"players\":{\"max\":0,\"online\":1,\"sample\":[{\"name\":\"J'ai pas hacké je jure\",\"id\":\"4566e69f-c907-48ee-8d71-d7ba5aa00d20\"}]},\"version\":{\"name\":\"1.19.2\",\"protocol\":760}}"
                         .as_bytes().to_vec();
                         
@@ -51,22 +60,22 @@ pub fn handle_connection(stream: TcpStream) -> io::Result<()>{
                         response.append(&mut text);
                         
                         codec.send_message(response)?;
-                        println!("| {} → sent status", address);
+                        status("sent status");
                     }
                     1 => {
-                        println!("| {} → Requested ping", address);
+                        status("Requested ping");
                         codec.send_message(message)?;
-                        println!("| {} → Sent pong", address);
-                        return Ok(());
+                        status("→ Sent pong");
+                        return Ok(Request::Status);
                     }
                     _ => {
-                        println!("| {} → Garbled packet", address);
+                        status("Garbled packet");
                         return Err(io::Error::from(io::ErrorKind::InvalidData));
                     }
                 }
             }
             RequestState::Login => {
-                println!("| {} → Requested login", address);
+                status("Requested login");
                 let mut text = "[{\"text\":\"Serveur Hors Ligne\n\n\",\"color\":\"red\"},{\"text\":\"Demande de démarrage reçue,\nle serveur devrait être disponible d'ici une minute\",\"color\":\"white\"}]"
                 .as_bytes().to_vec();
                 
@@ -76,11 +85,9 @@ pub fn handle_connection(stream: TcpStream) -> io::Result<()>{
                 response.append(&mut text);
                 
                 codec.send_message(response)?;
-                println!("| {} → sent disconnect message", address);
+                status("Sent disconnect message");
 
-                println!("\x1b[38;2;0;200;0mTODO: Implement server starting\x1b[0m");
-
-                return Ok(())
+                return Ok(Request::Start);
             }
         }
     }
