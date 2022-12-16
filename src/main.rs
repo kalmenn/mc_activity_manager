@@ -22,19 +22,21 @@ macro_rules! continue_on_err {
 }
 
 fn main() {
-    let mut clients = ClientCache::new();
+    // let mut clients = ClientCache::new();
 
     let listener = TcpListener::bind("127.0.0.1:6969").unwrap();
 
     for stream in listener.incoming() {
         let stream = continue_on_err!(stream);
 
-        clients.prune(2);
+        // clients.prune(2);
 
-        let addr = continue_on_err!(stream.peer_addr());
-        let client = continue_on_err!(clients.cache(addr));
+        // let addr = continue_on_err!(stream.peer_addr());
+        // let client = continue_on_err!(clients.cache(addr));
 
-        handle_connection(stream, client);
-        println!("current cached clients: {:#?}", &clients);
+        match handle_connection(stream) {
+            Ok(()) => println!("Connection closed"),
+            Err(err) => println!("killed connection on error: {}", err)
+        }
     }
 }
