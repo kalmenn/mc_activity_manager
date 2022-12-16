@@ -16,10 +16,10 @@ enum RequestState {
 
 pub fn handle_connection(stream: TcpStream) -> io::Result<Request>{
     let address = format!("\x1b[38;5;14m{}\x1b[0m", &stream.peer_addr()?);
-    println!("Request from {}", address);
+    println!("╭ Request from {}", address);
 
     let status = |status: &str| {
-        println!("| {} → {}", address, status);
+        println!("│ {} → {}", address, status);
     };
 
     let mut request_state = RequestState::Handshake;
@@ -65,7 +65,7 @@ pub fn handle_connection(stream: TcpStream) -> io::Result<Request>{
                     1 => {
                         status("Requested ping");
                         codec.send_message(message)?;
-                        status("→ Sent pong");
+                        status("Sent pong");
                         return Ok(Request::Status);
                     }
                     _ => {
