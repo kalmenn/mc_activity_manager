@@ -7,91 +7,70 @@ use crate::codec::Codec;
 pub enum RequestState {
     Handshake,
     Login,
-    Status,
-    Ping
+    Status
 }
 
 pub fn handle_connection(stream: TcpStream) -> io::Result<()>{
-    println!("request from {}", &stream.peer_addr().unwrap());
-    
+    let address = &stream.peer_addr()?;
+    println!("request from {}", address);
+
+    let mut request_state = RequestState::Handshake;
+
     let mut codec = Codec::new(stream)?;
     loop {
-        println!("got packet: {:?}", codec.read_message()?.iter().map(|byte| format!("{:#x}", byte)).collect::<Vec<String>>());
+        let message = codec.read_message()?;
 
-        let mut text = "{\"previewsChat\":false,\"enforcesSecureChat\":true,\"description\":{\"text\":\"Currently offline ...\",\"color\":\"red\"},\"players\":{\"max\":0,\"online\":0},\"version\":{\"name\":\"1.19.2\",\"protocol\":760}}"
-        .as_bytes().to_vec();
+        println!("{:?} → got packet: {:?}", address, &message.iter().map(|byte| format!("{:#x}", byte)).collect::<Vec<String>>());
 
-        let mut message = Vec::<u8>::new();
-        message.push(0);
-        message.append(&mut into_varint(text.len()));
-        message.append(&mut text);
-
-        codec.send_message(message)?;
-
-        // match &client.request_state {
-        //     RequestState::Handshake => {
-        //         println!("{:?}: Expecting handshake ...", &stream.peer_addr());
-        //         match &packet.body.bytes().last() {
-        //             Some(Ok(1)) => {
-        //                 println!("{:?}: Requested Status", &stream.peer_addr());
-        //                 client.request_state = RequestState::Status;
-        //             }
-        //             Some(Ok(2)) => {
-        //                 println!("{:?}: Requested Login", &stream.peer_addr());
-        //                 client.request_state = RequestState::Login;
-        //             }
-        //             _ => {
-        //                 println!("{:?}: Garbled packet", &stream.peer_addr());
-        //                 break
-        //             }
-        //         }
-        //     },
-        //     RequestState::Status => {
-        //         println!("{:?}: Expecting status request ...", &stream.peer_addr());
-
-        //         println!("Packet body: {:?}", &packet.body);
-
-        //         match packet.body.as_slice() {
-        //             &[1, 0] => {
-        //                 let mut message = "{\"previewsChat\":false,\"enforcesSecureChat\":true,\"description\":{\"text\":\"A Minecraft Server\"},\"players\":{\"max\":20,\"online\":0},\"version\":{\"name\":\"1.19.2\",\"protocol\":760}}"
-        //                 .as_bytes().to_vec();
+        match request_state {
+            RequestState::Handshake => {
+                println!("{:?} → State: Handshaking", address);
+                match &message.iter().last() {
+                    Some(1) => {
+                        request_state = RequestState::Status;
+                        println!("{:?} → Switching state to: Status", address);
+                    },
+                    Some(2) => {
+                        request_state = RequestState::Login;
+                        println!("{:?} → Switching state to: Login", address);
+                    }
+                    _ => {
+                        println!("{:?} → Garbled packet", address);
+                        return Err(io::Error::from(io::ErrorKind::InvalidData));
+                    }
+                }
+            },
+            RequestState::Status => {
+                println!("{:?} → State: Status", address);
+                match &message[0] {
+                    0 => {
+                        println!("{:?} → Requested status", address);
+                        let mut text = "{\"description\":[{\"text\":\"Actuellement Hors Ligne ...\n\",\"color\":\"gold\"},{\"text\":\"Connectez vous pour démarrer le serveur\",\"color\":\"dark_green\"}],\"players\":{\"max\":0,\"online\":1,\"sample\":[{\"name\":\"J'ai pas hacké je jure\",\"id\":\"4566e69f-c907-48ee-8d71-d7ba5aa00d20\"}]},\"version\":{\"name\":\"1.19.2\",\"protocol\":760}}"
+                        .as_bytes().to_vec();
                         
-        //                 let mut message_length = into_varint(message.len());
+                        let mut response = Vec::<u8>::new();
+                        response.push(0);
+                        response.append(&mut into_varint(text.len()));
+                        response.append(&mut text);
                         
-        //                 let mut response = into_varint(message.len() + message_length.len());
-                        
-        //                 response.push(0);
-        //                 response.append(&mut message_length);
-        //                 response.append(&mut message);
-                        
-        //                 match stream.write_all(&response) {
-        //                     Ok(_) => println!("{:?}: Wrote to stream", &stream.peer_addr()),
-        //                     Err(err) => {
-        //                         eprintln!("Got error while writing to stream: {}", err);
-        //                         break
-        //                     }
-        //                 }
-        //                 match stream.flush() {
-        //                     Ok(_) => println!("{:?}: Response sent", &stream.peer_addr()),
-        //                     Err(err) => {
-        //                         eprintln!("Got error while sending response: {}", err);
-        //                         break
-        //                     }
-        //                 }
-        //             }
-        //             _ => {
-        //                 println!("{:?}: Garbled packet", &stream.peer_addr());
-        //                 break
-        //             }
-        //         }
-        //     }
-        //     // TODO: implement next states
-        //     _ => break
-        // }
+                        codec.send_message(response)?;
+                        println!("{:?} → sent placeholder message", address);
+                    }
+                    1 => {
+                        println!("{:?} → Requested ping", address);
+                        codec.send_message(message)?;
+                        println!("{:?} → Sent pong", address);
+                        return Ok(());
+                    }
+                    _ => {
+                        println!("{:?} → Garbled packet", address);
+                        return Err(io::Error::from(io::ErrorKind::InvalidData));
+                    }
+                }
+            }
+            RequestState::Login => {
+                return Ok(())
+            }
+        }
     }
-
-    // match stream.peer_addr() {
-    //     Ok(addr) => println!("Killed connection to {}", addr),
-    //     Err(err) => eprintln!("killed connection {}", err)
-    // }
 }
