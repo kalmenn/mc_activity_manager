@@ -38,17 +38,17 @@ use std::io;
 ///
 /// # Example
 ///
-/// ```rust
-/// let mut bytes = vec![0b11110100_u8, 0b00000011_u8, 0, 0, 0].into_iter();
-/// 
+/// ```no_run
+/// let mut bytes = vec![0b11110100_u8, 0b00000011_u8].into_iter();
+///
 /// let mut reader = VarintReader::new();
 ///
 /// let value = loop {
-///     if let Some(value) = varint_reader.try_byte(bytes.next().unwrap())? {
+///     if let Some(value) = varint_reader.try_byte(bytes.next().unwrap()).unwrap() {
 ///         break value
 ///     }
 /// };
-/// 
+///
 /// assert_eq!(500, value);
 /// ```
 pub struct VarintReader {
@@ -66,7 +66,7 @@ impl VarintReader {
     pub fn new() -> VarintReader {
         VarintReader{length: 0, data: 0, complete: false}
     }
-    
+
     /// Returns the value of the varint and locks it as known
     fn read_and_lock(&mut self) -> u32 {
         self.complete = true;
@@ -99,7 +99,6 @@ impl VarintReader {
             Err(io::Error::from(io::ErrorKind::InvalidInput))
         }
     }
-    
 }
 
 #[cfg(test)]

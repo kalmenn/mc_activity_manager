@@ -89,12 +89,12 @@ fn handle_connection(stream: TcpStream) -> io::Result<Request>{
                         status("Requested status");
                         let mut text = "{\"description\":[{\"text\":\"Hors Ligne ...\n\",\"color\":\"gold\"},{\"text\":\"Connectez vous pour démarrer le serveur\",\"color\":\"dark_green\"}],\"players\":{\"max\":0,\"online\":1,\"sample\":[{\"name\":\"J'ai pas hacké je jure\",\"id\":\"4566e69f-c907-48ee-8d71-d7ba5aa00d20\"}]},\"version\":{\"name\":\"1.19.2\",\"protocol\":760}}"
                         .as_bytes().to_vec();
-                        
+
                         let mut response = Vec::<u8>::new();
                         response.push(0);
                         response.append(&mut into_varint(text.len()));
                         response.append(&mut text);
-                        
+
                         codec.send_message(response)?;
                         status("sent status");
                     }
@@ -114,12 +114,12 @@ fn handle_connection(stream: TcpStream) -> io::Result<Request>{
                 status("Requested login");
                 let mut text = "[{\"text\":\"Serveur Hors Ligne\n\n\",\"color\":\"red\"},{\"text\":\"Demande de démarrage reçue,\nle serveur devrait être disponible d'ici une minute\",\"color\":\"white\"}]"
                 .as_bytes().to_vec();
-                
+
                 let mut response = Vec::<u8>::new();
                 response.push(0);
                 response.append(&mut into_varint(text.len()));
                 response.append(&mut text);
-                
+
                 codec.send_message(response)?;
                 status("Sent disconnect message");
 
