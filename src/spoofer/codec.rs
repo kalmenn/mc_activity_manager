@@ -2,7 +2,7 @@
 
 use std::io::{self, Write, Read};
 use std::net::TcpStream;
-use crate::varint::into_varint;
+use crate::spoofer::varint::into_varint;
 
 /// Handles reading and writing of packets. 
 pub struct Codec {

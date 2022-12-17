@@ -1,9 +1,12 @@
+mod varint;
+mod codec;
+
 use std::{io, net::{TcpStream, TcpListener}};
 
-use crate::varint::into_varint;
-use crate::codec::Codec;
+use varint::into_varint;
+use codec::Codec;
 
-pub enum Request {
+enum Request {
     Status,
     Start
 }
@@ -11,7 +14,7 @@ pub enum Request {
 pub fn listen() {
     let listener = TcpListener::bind("127.0.0.1:6969").unwrap();
     println!("\x1b[38;2;0;200;0mSpoofer listening on port 6969\x1b[0m");
-    
+
     for stream in listener.incoming() {
         let stream = match stream {
             Ok(stream) => stream,

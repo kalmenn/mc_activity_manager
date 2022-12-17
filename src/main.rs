@@ -1,6 +1,4 @@
 mod spoofer;
-mod varint;
-mod codec;
 mod minecraft_server;
 
 fn main() {

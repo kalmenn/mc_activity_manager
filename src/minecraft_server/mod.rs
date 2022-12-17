@@ -9,8 +9,8 @@ fn run_as_child_process() -> std::io::Result<ExitStatus> {
     
     // netcat as proof of concept
     // The child process can indeed bind to the same port
-    let mut child = Command::new("nc")
-    .args(vec!("-l","-p 6969"))
+    let mut child = Command::new("sl")
+    // .args(vec!("-l","-p 6969"))
     .spawn()?;
 
     child.wait()
