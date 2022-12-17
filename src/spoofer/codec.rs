@@ -2,7 +2,7 @@
 
 use std::io::{self, Write, Read};
 use std::net::TcpStream;
-use crate::spoofer::varint::into_varint;
+use super::varint::{into_varint, VarintReader};
 
 /// Handles reading and writing of packets. 
 pub struct Codec {
@@ -37,61 +37,17 @@ impl Codec {
 
     /// Read a received message from the TcpStream
     pub fn read_message(&mut self) -> io::Result<Vec<u8>> {
-
-        // The packet is prefixed with a varint encoding its size
-        let mut packet_length = PacketLength::unknown();
-
-        // Reading the varint
-        while let PacketLength::Reading(varint) = &mut packet_length {
-            let data = self.read_byte()?;
-            varint.data += ((data & 0b01111111) as u32) << (7 * varint.length);
-            if data >= 128 {
-                // Found continuation byte
-                varint.length += 1;
-                if varint.length > 4 {
-                    return Err(io::Error::from(io::ErrorKind::InvalidData));
-                }
-            } else {
-                // End of varint
-                packet_length.to_known();
+        // Read the Varint encoding the size of the packet
+        let mut varint_reader = VarintReader::new();
+        let packet_length = loop {
+            if let Some(value) = varint_reader.try_byte(self.read_byte()?)? {
+                break value
             }
-        }
+        };
 
-        let mut packet_body = vec![0u8; packet_length.length()? as usize];
+        // Read the packet body
+        let mut packet_body = vec![0u8; packet_length as usize];
         self.reader.read_exact(&mut packet_body)?;
-        Ok(packet_body)
-    }
-}
-
-struct VarintBuffer {
-    length: usize,
-    data: u32
-}
-
-/// Used as a buffer while reading the VarInt that encodes the packet length
-enum PacketLength {
-    Known(u32),
-    Reading(VarintBuffer)
-}
-
-impl PacketLength {
-    /// Initialises with an empty VarInt
-    fn unknown() -> PacketLength {
-        PacketLength::Reading(VarintBuffer{length: 0, data: 0})
-    }
-
-    /// Returns the packet length or an error if it isn't known
-    fn length(&self) -> io::Result<u32> {
-        match self {
-            PacketLength::Known(packet_length) => Ok(*packet_length),
-            PacketLength::Reading(_) => Err(io::Error::from(io::ErrorKind::InvalidData))
-        }
-    }
-
-    /// Freezes the packet length as a known value
-    fn to_known(&mut self) {
-        if let Self::Reading(varint) = self {
-            *self = Self::Known(varint.data);
-        }
+        return Ok(packet_body)
     }
 }
