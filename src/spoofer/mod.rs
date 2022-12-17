@@ -1,35 +1,47 @@
 mod varint;
 mod codec;
+mod threadpool;
 
 use std::{io, net::{TcpStream, TcpListener}};
+use std::sync::mpsc;
 
 use varint::into_varint;
 use codec::Codec;
+use threadpool::ThreadPool;
 
 enum Request {
     Status,
     Start
 }
 
-pub fn listen() {
+pub fn wait_for_start_request() {
     let listener = TcpListener::bind("127.0.0.1:6969").unwrap();
-    println!("\x1b[38;2;0;200;0mSpoofer listening on port 6969\x1b[0m");
+    listener.set_nonblocking(true).unwrap();
+    println!("\n\x1b[38;2;0;200;0mSpoofer listening on port 6969\x1b[0m\n");
 
-    for stream in listener.incoming() {
-        let stream = match stream {
-            Ok(stream) => stream,
-            Err(e) => {
-                println!("Skipped connection on error: {:?}", e);
-                continue;
-            }
-        };
-        match handle_connection(stream) {
-            Ok(request) => {
-                println!("╰ Connection closed");
-                if let Request::Start = request {break};
-            },
-            Err(err) => println!("╰ Killed connection on error: {}", err)
+    let pool = ThreadPool::new(10);
+
+    let (tx_request, rx_request) = mpsc::channel::<Request>();
+
+    loop {
+        if let Ok((stream, address)) = listener.accept() {
+            let tx_request = tx_request.clone();
+            let address = format!("\x1b[38;5;14m{}\x1b[0m", address);
+            pool.execute(move || {
+                println!("Connection from {}", address);
+                match handle_connection(stream) {
+                    Ok(request) => {
+                        println!("Closed connection to {address}");
+                        tx_request.send(request).unwrap();
+                    },
+                    Err(err) => println!("Killed connection to {address} on error: {err}")
+                }
+            });
         }
+        if let Ok(Request::Start) = rx_request.try_recv() {
+            break
+        }
+        std::thread::sleep(std::time::Duration::from_millis(100));
     }
 }
 
@@ -41,10 +53,9 @@ enum RequestState {
 
 fn handle_connection(stream: TcpStream) -> io::Result<Request>{
     let address = format!("\x1b[38;5;14m{}\x1b[0m", &stream.peer_addr()?);
-    println!("\n╭ Request from {}", address);
 
     let status = |status: &str| {
-        println!("│ {} → {}", address, status);
+        println!("{} → {}", address, status);
     };
 
     let mut request_state = RequestState::Handshake;
