@@ -26,7 +26,7 @@ where I: BitStore {
         bytes[i] += 128;
     }
 
-    return bytes;
+    bytes
 }
 
 use std::io;

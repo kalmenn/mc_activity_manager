@@ -25,7 +25,7 @@ impl Codec {
         for byte in message.iter() {
             packet.push(*byte);
         }
-        self.writer.write(&packet)?;
+        self.writer.write_all(&packet)?;
         self.writer.flush()
     }
 
@@ -48,6 +48,6 @@ impl Codec {
         // Read the packet body
         let mut packet_body = vec![0u8; packet_length as usize];
         self.reader.read_exact(&mut packet_body)?;
-        return Ok(packet_body)
+        Ok(packet_body)
     }
 }
