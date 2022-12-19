@@ -1,47 +1,55 @@
 mod varint;
 mod codec;
-mod threadpool;
 
-use std::{io, net::{TcpStream, TcpListener}};
-use std::sync::mpsc;
+use tokio::{
+    task,
+    io, 
+    net::{TcpStream, TcpListener}
+};
+use futures::{stream::FuturesUnordered, StreamExt};
 
 use varint::into_varint;
 use codec::Codec;
-use threadpool::ThreadPool;
 
 enum Request {
     Status,
     Start
 }
 
-pub fn wait_for_start_request() {
-    let listener = TcpListener::bind("127.0.0.1:6969").unwrap();
-    listener.set_nonblocking(true).unwrap();
+pub async fn wait_for_start_request() {
+    // let listener = tokio::net::TcpListener::bind("127.0.0.1:6969");
+    let listener = TcpListener::bind("127.0.0.1:6969")
+        .await
+        .expect("Couldn't bind to TCP socket");
+
     println!("\n\x1b[38;2;0;200;0mSpoofer listening on port 6969\x1b[0m\n");
 
-    let pool = ThreadPool::new(10);
-
-    let (tx_request, rx_request) = mpsc::channel::<Request>();
-
+    let mut futures = FuturesUnordered::new();
     loop {
-        if let Ok((stream, address)) = listener.accept() {
-            let tx_request = tx_request.clone();
-            let address = format!("\x1b[38;5;14m{}\x1b[0m", address);
-            pool.execute(move || {
-                println!("Connection from {}", address);
-                match handle_connection(stream) {
-                    Ok(request) => {
-                        println!("Closed connection to {address}");
-                        tx_request.send(request).unwrap();
-                    },
-                    Err(err) => println!("Killed connection to {address} on error: {err}")
+        tokio::select! {
+            Ok((stream, address)) = listener.accept() => {
+                let address = format!("\x1b[38;5;14m{}\x1b[0m", address);
+                
+                futures.push(task::spawn(async move {
+                    println!("Connection from {}", address);
+                    let result = handle_connection(stream).await;
+                    match &result {
+                        Ok(_) => {
+                            println!("Closed connection to {address}");
+                        },
+                        Err(err) => {
+                            println!("Killed connection to {address} on error: {err}");
+                        }
+                    }
+                    result
+                }));
+            },
+            Some(request) = futures.next() => {
+                if let Ok(Ok(Request::Start)) = request {
+                    break
                 }
-            });
+            }
         }
-        if let Ok(Request::Start) = rx_request.try_recv() {
-            break
-        }
-        std::thread::sleep(std::time::Duration::from_millis(100));
     }
 }
 
@@ -51,7 +59,7 @@ enum RequestState {
     Status
 }
 
-fn handle_connection(stream: TcpStream) -> io::Result<Request>{
+async fn handle_connection(stream: TcpStream) -> io::Result<Request>{
     let address = format!("\x1b[38;5;14m{}\x1b[0m", &stream.peer_addr()?);
 
     let status = |status: &str| {
@@ -62,7 +70,7 @@ fn handle_connection(stream: TcpStream) -> io::Result<Request>{
 
     let mut codec = Codec::new(stream)?;
     loop {
-        let message = codec.read_message()?;
+        let message = codec.read_message().await?;
 
         match request_state {
             RequestState::Handshake => {
@@ -95,12 +103,12 @@ fn handle_connection(stream: TcpStream) -> io::Result<Request>{
                         response.append(&mut into_varint(text.len()));
                         response.append(&mut text);
 
-                        codec.send_message(response)?;
+                        codec.send_message(response).await?;
                         status("sent status");
                     }
                     1 => {
                         status("Requested ping");
-                        codec.send_message(message)?;
+                        codec.send_message(message).await?;
                         status("Sent pong");
                         return Ok(Request::Status);
                     }
@@ -120,7 +128,7 @@ fn handle_connection(stream: TcpStream) -> io::Result<Request>{
                 response.append(&mut into_varint(text.len()));
                 response.append(&mut text);
 
-                codec.send_message(response)?;
+                codec.send_message(response).await?;
                 status("Sent disconnect message");
 
                 return Ok(Request::Start);

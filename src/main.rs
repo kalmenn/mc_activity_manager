@@ -1,9 +1,10 @@
 mod spoofer;
 mod minecraft_server_runner;
 
-fn main() {
+#[tokio::main(flavor = "current_thread")]
+async fn main() {
     loop {
-        spoofer::wait_for_start_request();
+        spoofer::wait_for_start_request().await;
         minecraft_server_runner::start_server();
     }
 }
