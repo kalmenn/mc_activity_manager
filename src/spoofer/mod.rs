@@ -1,9 +1,11 @@
 mod varint;
 mod codec;
 
+use std::net::SocketAddr;
+
 use tokio::{
     task,
-    io, 
+    io,
     net::{TcpStream, TcpListener}
 };
 use futures::{stream::FuturesUnordered, StreamExt};
@@ -11,52 +13,68 @@ use futures::{stream::FuturesUnordered, StreamExt};
 use varint::into_varint;
 use codec::Codec;
 
+enum RequestState {
+    Handshake,
+    Login,
+    Status
+}
+
 enum Request {
     Status,
     Start
 }
 
-pub async fn wait_for_start_request() {
-    // let listener = tokio::net::TcpListener::bind("127.0.0.1:6969");
-    let listener = TcpListener::bind("127.0.0.1:6969")
-        .await
-        .expect("Couldn't bind to TCP socket");
+pub struct Spoofer {
+    /// Which socket to listen on
+    socket: SocketAddr,
+    /// Sets the verbosity of status messages in the terminal
+    debug: bool
+}
 
-    println!("\n\x1b[38;2;0;200;0mSpoofer listening on port 6969\x1b[0m\n");
+impl Spoofer {
+    pub fn new() -> Spoofer {
+        Spoofer {
+            socket: "127.0.0.1:25565".parse::<SocketAddr>().unwrap(),
+            debug: false
+        }
+    }
 
-    let mut futures = FuturesUnordered::new();
-    loop {
-        tokio::select! {
-            Ok((stream, address)) = listener.accept() => {
-                let address = format!("\x1b[38;5;14m{}\x1b[0m", address);
-                
-                futures.push(task::spawn(async move {
-                    println!("Connection from {}", address);
-                    let result = handle_connection(stream).await;
-                    match &result {
-                        Ok(_) => {
-                            println!("Closed connection to {address}");
-                        },
-                        Err(err) => {
-                            println!("Killed connection to {address} on error: {err}");
+    /// Starts listening and returns when a start request has been recieved
+    pub async fn wait_for_start_request(&self) {
+        let listener = TcpListener::bind(self.socket)
+            .await
+            .expect("Couldn't bind to TCP socket");
+
+        println!("\n\x1b[38;2;0;200;0mSpoofer listening on port {}\x1b[0m\n", self.socket.port());
+
+        let mut request_buffer = FuturesUnordered::new();
+        loop {
+            tokio::select! {
+                Ok((stream, address)) = listener.accept() => {
+                    let address = format!("\x1b[38;5;14m{}\x1b[0m", address);
+                    
+                    request_buffer.push(task::spawn(async move {
+                        println!("Connection from {}", address);
+                        let result = handle_connection(stream).await;
+                        match &result {
+                            Ok(_) => {
+                                println!("Closed connection to {address}");
+                            },
+                            Err(err) => {
+                                println!("Killed connection to {address} on error: {err}");
+                            }
                         }
+                        result
+                    }));
+                },
+                Some(request) = request_buffer.next() => {
+                    if let Ok(Ok(Request::Start)) = request {
+                        break
                     }
-                    result
-                }));
-            },
-            Some(request) = futures.next() => {
-                if let Ok(Ok(Request::Start)) = request {
-                    break
                 }
             }
         }
     }
-}
-
-enum RequestState {
-    Handshake,
-    Login,
-    Status
 }
 
 async fn handle_connection(stream: TcpStream) -> io::Result<Request>{
