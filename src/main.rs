@@ -5,6 +5,6 @@ mod minecraft_server_runner;
 async fn main() {
     loop {
         spoofer::wait_for_start_request().await;
-        minecraft_server_runner::start_server();
+        minecraft_server_runner::run_server().await;
     }
 }
