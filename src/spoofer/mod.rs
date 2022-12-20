@@ -4,84 +4,157 @@ mod codec;
 use std::net::SocketAddr;
 
 use tokio::{
-    task,
+    task::{self, JoinHandle},
+    sync::mpsc::{self, Sender, Receiver},
     io,
     net::{TcpStream, TcpListener}
 };
-use futures::{stream::FuturesUnordered, StreamExt};
 
 use varint::into_varint;
 use codec::Codec;
 
+/// Encodes the state of a connection being handled by a [`Spoofer`]
 enum RequestState {
     Handshake,
     Login,
     Status
 }
 
+/// Encodes different types of requests handled by [`spoofers`](Spoofer).
+#[derive(Debug)]
 enum Request {
     Status,
     Start
 }
 
+/// A spoofer pretends to be a minecraft server by listening for
+/// incoming connections, and serving custom data.
+/// 
+/// Build a `Spoofer` with the [`new`](Self::new()) method and appending
+/// build methods like [`set_port`](Self::set_port()) or [`set_debug`](Self::set_debug())
+/// 
+/// A `Spoofer` needs to be told to start listening after it has been built.
+/// Do this with [`start_listening`][Self::start_listening()]
 pub struct Spoofer {
     /// Which socket to listen on
     socket: SocketAddr,
     /// Sets the verbosity of status messages in the terminal
-    debug: bool
+    show_debug: bool,
+    /// Incoming requests are sent through this channel to be dealt with by
+    /// another task.
+    request_channel: (Sender<Request>, Receiver<Request>),
+    /// Holds the task that serves clients if there is any.
+    /// Can be created with [`start_listening()`](Self::start_listening())
+    listener: Option<JoinHandle<()>>
 }
 
 impl Spoofer {
+
+    /// Creates a new spoofer with default settings.
+    /// 
+    /// By default, the spoofer listens on local port 25565.
     pub fn new() -> Spoofer {
         Spoofer {
             socket: "127.0.0.1:25565".parse::<SocketAddr>().unwrap(),
-            debug: false
+            show_debug: false,
+            request_channel: mpsc::channel(10),
+            listener: None
         }
     }
 
-    /// Starts listening and returns when a start request has been recieved
-    pub async fn wait_for_start_request(&self) {
-        let listener = TcpListener::bind(self.socket)
+    /// To be used when constructing a `Spoofer`.
+    /// 
+    /// Sets the port to listen on to `port`.
+    pub fn set_port(mut self, port: u16) -> Self {
+        self.socket.set_port(port);
+        self
+    }
+
+    /// To be used when constructing a `Spoofer`.
+    /// 
+    /// Sets the verbosity of status messages.
+    pub fn set_debug(mut self, show_debug: bool) -> Self {
+        self.show_debug = show_debug;
+        self
+    }
+
+    /// Start serving clients with the settings provided during the 
+    /// building of the spoofer.
+    /// 
+    /// Sends all incoming [requests](Request) through buffered a channel
+    /// for evaluation.
+    pub fn start_listening(&mut self) {
+        if self.listener.is_some() {
+            panic!("Spoofer is already listening in another task");
+        }
+
+        let tx = self.request_channel.0.clone();
+        let socket = self.socket;
+
+        let show_debug = self.show_debug;
+
+        self.listener = Some(task::spawn(async move { 
+            let listener = TcpListener::bind(socket)
             .await
             .expect("Couldn't bind to TCP socket");
-
-        println!("\n\x1b[38;2;0;200;0mSpoofer listening on port {}\x1b[0m\n", self.socket.port());
-
-        let mut request_buffer = FuturesUnordered::new();
-        loop {
-            tokio::select! {
-                Ok((stream, address)) = listener.accept() => {
+            
+            loop {
+                let tx = tx.clone();
+                if let Ok((stream, address)) = listener.accept().await  {
                     let address = format!("\x1b[38;5;14m{}\x1b[0m", address);
+                    println!("Connection from {}", address);
                     
-                    request_buffer.push(task::spawn(async move {
-                        println!("Connection from {}", address);
-                        let result = handle_connection(stream).await;
-                        match &result {
-                            Ok(_) => {
+                    task::spawn(async move {
+                        match handle_connection(stream, show_debug).await {
+                            Ok(request) => {
                                 println!("Closed connection to {address}");
+                                tx.send(request).await.expect("Reciever of requests dropped");
                             },
                             Err(err) => {
                                 println!("Killed connection to {address} on error: {err}");
                             }
                         }
-                        result
-                    }));
-                },
-                Some(request) = request_buffer.next() => {
-                    if let Ok(Ok(Request::Start)) = request {
-                        break
-                    }
+                    });
                 }
             }
+        }));
+
+        println!("\n\x1b[38;2;0;200;0mSpoofer listening on port {}\x1b[0m\n", self.socket.port());
+    }
+
+    /// Reads from the request channel and returns only 
+    /// when a start request has been recieved
+    pub async fn wait_for_start_request(&mut self) {
+        loop {
+            if let Some(Request::Start) = self.request_channel.1.recv().await {
+                break
+            }
+        }
+    }
+
+}
+
+impl Drop for Spoofer {
+    fn drop(&mut self) {
+        if let Some(task) = self.listener.take() {
+            task.abort();
         }
     }
 }
 
-async fn handle_connection(stream: TcpStream) -> io::Result<Request>{
+/// Takes ownership of the incoming stream and returns the [kind of request](Request)
+/// the client sent
+async fn handle_connection(stream: TcpStream, show_debug: bool) -> io::Result<Request>{
     let address = format!("\x1b[38;5;14m{}\x1b[0m", &stream.peer_addr()?);
 
-    let status = |status: &str| {
-        println!("{} → {}", address, status);
+    let status = |message: &str| {
+        println!("{} → {}", address, message);
+    };
+
+    let debug = |message: &str| {
+        if show_debug {
+            status(message);
+        }
     };
 
     let mut request_state = RequestState::Handshake;
@@ -92,15 +165,15 @@ async fn handle_connection(stream: TcpStream) -> io::Result<Request>{
 
         match request_state {
             RequestState::Handshake => {
-                status("State: Handshaking");
+                debug("State: Handshaking");
                 match &message.iter().last() {
                     Some(1) => {
                         request_state = RequestState::Status;
-                        status("Switching state to: Status");
+                        debug("Switching state to: Status");
                     },
                     Some(2) => {
                         request_state = RequestState::Login;
-                        status("Switching state to: Login");
+                        debug("Switching state to: Login");
                     }
                     _ => {
                         status("Garbled packet");
@@ -109,7 +182,7 @@ async fn handle_connection(stream: TcpStream) -> io::Result<Request>{
                 }
             },
             RequestState::Status => {
-                status("State: Status");
+                debug("State: Status");
                 match &message[0] {
                     0 => {
                         status("Requested status");
