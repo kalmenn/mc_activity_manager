@@ -1,34 +1,44 @@
-use std::process::ExitStatus;
+use std::process::{ExitStatus, Stdio};
 
 use tokio::{
-    process::Command,
-    io
+    process::{Command, ChildStdin, Child},
+    io::{self, AsyncWriteExt}
 };
 
-pub async fn run_server() {
-    let status = run_as_child_process().await;
-    println!("Process exited on status: {:?}", status);
+pub struct McServer {
+    process: Child,
+    stdin: ChildStdin,
 }
 
-async fn run_as_child_process() -> io::Result<ExitStatus> {
-    println!("\n\x1b[38;2;0;200;0mStarting minecraft server in child process\x1b[0m\n");
+impl McServer {
+    // pub fn from_command(command: &str) -> io::Result<McServer> {
+    //     Self::with_args(command, &[])
+    // }
 
-    // TODO: allow for a custom command to be specified in a config file
+    pub fn with_args(command: &str, args: &[&str]) -> io::Result<McServer> {
+        println!("\n\x1b[38;2;0;200;0mStarting minecraft server as child process\x1b[0m\n");
 
-    // netcat as proof of concept
-    // The child process can indeed bind to the same port
-    // let mut child = Command::new("nc")
-    // .stdin(Stdio::piped())
-    // .stdout(Stdio::piped())
-    // .args(vec!("-l", "-p 6969"))
-    // .spawn()?;
+        let mut child = Command::new(command)
+        .args(args)
+        .stdin(Stdio::piped())
+        .spawn()?;
 
-    // sl is faster to test with
-    // let mut child = Command::new("sl").spawn()?;
+        let stdin = child.stdin
+        .take()
+        .expect("Could not bind to stdin of child process");
 
-    let mut child = Command::new("/bin/bash")
-    .arg("./start.sh")
-    .spawn()?;
+        Ok(McServer { process: child, stdin })
+    }
 
-    child.wait().await
+    pub async fn stop(&mut self) -> io::Result<ExitStatus> {
+        self.stdin.write_all("stop\n".as_bytes())
+        .await
+        .expect("Could not write to stdin of child process");
+
+        self.wait_for_exit().await
+    }
+
+    pub async fn wait_for_exit(&mut self) -> io::Result<ExitStatus> {
+        self.process.wait().await
+    }
 }
