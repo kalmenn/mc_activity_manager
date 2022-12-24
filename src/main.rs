@@ -1,5 +1,6 @@
 mod spoofer;
 mod minecraft_server_runner;
+mod mc_protocol;
 
 use spoofer::Spoofer;
 use minecraft_server_runner::McServer;

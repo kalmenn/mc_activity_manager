@@ -4,7 +4,7 @@ use tokio::{
     net::{TcpStream, tcp::{OwnedReadHalf, OwnedWriteHalf}},
     io::{BufReader, BufWriter, AsyncReadExt, AsyncWriteExt, self}
 };
-use super::varint::{into_varint, VarintReader};
+use super::data_types::varint::{into_varint, VarintReader};
 
 /// Handles reading and writing of packets. 
 pub struct Codec {

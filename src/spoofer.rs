@@ -1,6 +1,3 @@
-mod varint;
-mod codec;
-
 use std::net::SocketAddr;
 
 use tokio::{
@@ -10,8 +7,8 @@ use tokio::{
     net::{TcpStream, TcpListener}
 };
 
-use varint::into_varint;
-use codec::Codec;
+use crate::mc_protocol::data_types::varint::into_varint;
+use crate::mc_protocol::codec::Codec;
 
 /// Encodes the state of a connection being handled by a [`Spoofer`]
 enum RequestState {
