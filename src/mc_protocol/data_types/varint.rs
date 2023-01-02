@@ -29,7 +29,27 @@ where I: BitStore {
     bytes
 }
 
-use std::io;
+use tokio::io::{AsyncRead, AsyncReadExt, self};
+
+/// Reads a varint from an async reader and consumes its bytes.
+pub async fn read_varint<R>(reader: &mut R) -> Result<u32, io::Error> 
+where
+    R: AsyncRead + std::marker::Unpin
+{
+    let value = {
+        let mut varint_reader = VarintReader::new();
+        loop {
+            if let Some(byte) = varint_reader.try_byte(
+                reader.read_u8().await?
+            )?
+            {
+                break byte
+            }
+        }
+    };
+
+    Ok(value)
+}
 
 /// Used to read a varint byte by byte.
 ///
@@ -127,7 +147,7 @@ mod tests {
             }
         }
     }
-    
+
     #[test]
     fn varint_chain() {
         let mut bytes = into_varint(6969_u32).into_iter();
@@ -141,5 +161,15 @@ mod tests {
         };
 
         assert_eq!(6969, value);
+    }
+
+    #[tokio::test]
+    async fn read_varint_test() {
+        let bytes = [0b11110100_u8, 0b00000011_u8, 0, 0, 0];
+        let mut reader = io::BufReader::new(&bytes[..]);
+        assert_eq!(
+            500,
+            read_varint(&mut reader).await.unwrap()
+        );
     }
 }

@@ -4,7 +4,7 @@ use tokio::{
     net::{TcpStream, tcp::{OwnedReadHalf, OwnedWriteHalf}},
     io::{BufReader, BufWriter, AsyncReadExt, AsyncWriteExt, self}
 };
-use super::data_types::varint::{into_varint, VarintReader};
+use super::data_types::varint::{read_varint, into_varint};
 
 /// Handles reading and writing of packets. 
 pub struct Codec {
@@ -32,21 +32,9 @@ impl Codec {
         self.writer.flush().await
     }
 
-    async fn read_byte(&mut self) -> io::Result<u8> {
-        let mut byte = [0_u8; 1];
-        self.reader.read_exact(&mut byte).await?;
-        Ok(byte[0])
-    }
-
     /// Read a received message from the TcpStream
     pub async fn read_message(&mut self) -> io::Result<Vec<u8>> {
-        // Read the Varint encoding the size of the packet
-        let mut varint_reader = VarintReader::new();
-        let packet_length = loop {
-            if let Some(value) = varint_reader.try_byte(self.read_byte().await?)? {
-                break value
-            }
-        };
+        let packet_length = read_varint(&mut self.reader).await?;
 
         // Read the packet body
         let mut packet_body = vec![0u8; packet_length as usize];
