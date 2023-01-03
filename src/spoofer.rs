@@ -7,8 +7,8 @@ use tokio::{
     net::{TcpStream, TcpListener}
 };
 
-use crate::mc_protocol::data_types::varint::into_varint;
-use crate::mc_protocol::codec::Codec;
+use crate::mc_protocol::data_types::mc_varint::into_varint;
+use crate::mc_protocol::Codec;
 
 /// Encodes the state of a connection being handled by a [`Spoofer`]
 enum RequestState {
