@@ -1,6 +1,6 @@
 use crate::mc_protocol::{
     McProtocol,
-    data_types::mc_varint,
+    data_types::mc_varint::McVarint,
 };
 
 use tokio::io::{self, AsyncReadExt, AsyncWriteExt};
@@ -8,7 +8,7 @@ use async_trait::async_trait;
 use std::marker::{Unpin, Send};
 
 pub struct HandshakePacket{
-    protocol_version: u32,
+    protocol_version: McVarint,
     server_address: String,
     server_port: u16,
     next_state: NextState,
@@ -25,7 +25,7 @@ impl McProtocol for HandshakePacket {
     where
         R: io::AsyncRead + Unpin + Send
     {
-        let protocol_version = mc_varint::from_reader(reader).await?;
+        let protocol_version = McVarint::deserialize_read(reader).await?;
         let server_address = String::deserialize_read(reader).await?;
         let server_port = reader.read_u16().await?;
         let next_state = match reader.read_u8().await? {
@@ -46,7 +46,7 @@ impl McProtocol for HandshakePacket {
     where
         W: io::AsyncWrite + Unpin + Send
     {
-        writer.write_all(&mc_varint::into_varint(self.protocol_version)).await?;
+        self.protocol_version.serialize_write(writer).await?;
         if self.server_address.chars().count() > 255 {
             return Err(io::Error::new(io::ErrorKind::InvalidInput, "server_address can't be over 255 characters long"))
         }

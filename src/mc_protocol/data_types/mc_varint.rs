@@ -1,3 +1,76 @@
+use tokio::io::{
+    self,
+    AsyncRead,
+    AsyncReadExt,
+    AsyncWriteExt,
+};
+
+pub struct McVarint(Vec<u8>);
+
+#[async_trait::async_trait]
+impl crate::mc_protocol::McProtocol for McVarint {
+    async fn serialize_write<W>(&self, writer: &mut W) -> io::Result<()>
+    where
+        W: io::AsyncWrite + Unpin + Send
+    {
+        writer.write_all(&self.0).await?;
+        writer.flush().await?;
+        Ok(())
+    }
+
+    async fn deserialize_read<R>(reader: &mut R) -> io::Result<Self> 
+    where
+        Self: std::marker::Sized,
+        R: io::AsyncRead + Unpin + Send
+    {
+        let mut bytes = Vec::<u8>::new();
+
+        loop {
+            let byte = reader.read_u8().await?;
+            bytes.push(byte);
+            if bytes.len() > 5 {
+                return Err(io::Error::new(io::ErrorKind::InvalidData, "varints can't be over 5 bytes long"))
+            }
+            if byte < 128 {break}
+        }
+
+        Ok(McVarint(bytes))
+    }
+}
+
+impl From<i32> for McVarint {
+    fn from(value: i32) -> Self {
+        // Create a vector of the right size
+        let number_of_bytes: usize = {
+            let number_of_bits = 32 - value.leading_zeros() as usize;
+            (number_of_bits / 7) + (number_of_bits % 7 > 0) as usize
+        };
+        let mut bytes = vec![0_u8; number_of_bytes];
+
+        // Make groups of 7 bits
+        for bit in 0..32 {
+            bytes[(bit) / 7] += 2_u8.pow((bit % 7) as u32) * (value >> bit & 1) as u8;
+        }
+
+        // Add continuation bits
+        for i in 0..bytes.len()-1 {
+            bytes[i] += 128;
+        }
+
+        McVarint(bytes)
+    }
+}
+
+impl From<McVarint> for i32 {
+    fn from(value: McVarint) -> Self {
+        let mut number: i32 = 0;
+        for byte in value.0.iter().enumerate() {
+            number += ((byte.1 & 0b01111111) as i32) << (7 * byte.0)
+        }
+        number
+    }
+}
+
 use bitvec::prelude::*;
 
 pub fn into_varint<I>(number: I) -> Vec<u8> 
@@ -28,8 +101,6 @@ where I: BitStore {
 
     bytes
 }
-
-use tokio::io::{AsyncRead, AsyncReadExt, self};
 
 /// Reads a varint from an async reader and consumes its bytes.
 pub async fn from_reader<R>(reader: &mut R) -> Result<u32, io::Error> 
@@ -87,12 +158,6 @@ impl VarintReader {
         VarintReader{length: 0, data: 0, complete: false}
     }
 
-    /// Returns the value of the varint and locks it as known
-    fn read_and_lock(&mut self) -> u32 {
-        self.complete = true;
-        self.data
-    }
-
     /// Add a byte of data to the reader.
     ///
     /// Returns a `Ok(Some)` containing the value encoded by the varint
@@ -113,7 +178,8 @@ impl VarintReader {
                 }
                 Ok(None)
             } else {
-                Ok(Some(self.read_and_lock()))
+                self.complete = true;
+                Ok(Some(self.data))
             }
         } else {
             Err(io::Error::from(io::ErrorKind::InvalidInput))
