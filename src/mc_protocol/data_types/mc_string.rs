@@ -14,14 +14,16 @@ impl McProtocol for String {
         W: io::AsyncWrite + Unpin + Send
     {
         let bytes = self.as_bytes();
-        // writer.write_all(&[0]).await?;
-        todo!()
+        writer.write_all(&mc_varint::into_varint(bytes.len())).await?;
+        writer.write_all(bytes).await?;
+        writer.flush().await?;
+        Ok(())
     }
     
-    async fn deserialize_from_reader<R>(reader: &mut R) -> io::Result<Self> 
+    async fn deserialize_read<R>(reader: &mut R) -> io::Result<Self> 
     where
-    Self: std::marker::Sized,
-    R: io::AsyncRead + Unpin + Send
+        Self: std::marker::Sized,
+        R: io::AsyncRead + Unpin + Send
     {
         let length = mc_varint::from_reader(reader).await?;
         

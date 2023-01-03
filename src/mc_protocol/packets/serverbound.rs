@@ -21,12 +21,12 @@ enum NextState {
 
 #[async_trait]
 impl McProtocol for HandshakePacket {
-    async fn deserialize_from_reader<R>(reader: &mut R) -> io::Result<Self> 
+    async fn deserialize_read<R>(reader: &mut R) -> io::Result<Self> 
     where
         R: io::AsyncRead + Unpin + Send
     {
         let protocol_version = mc_varint::from_reader(reader).await?;
-        let server_address = String::deserialize_from_reader(reader).await?;
+        let server_address = String::deserialize_read(reader).await?;
         let server_port = reader.read_u16().await?;
         let next_state = match reader.read_u8().await? {
             1 => NextState::Login,

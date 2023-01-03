@@ -16,7 +16,7 @@ trait McProtocol {
     where
         W: io::AsyncWrite + Unpin + Send
     ;
-    async fn deserialize_from_reader<R>(reader: &mut R) -> io::Result<Self> 
+    async fn deserialize_read<R>(reader: &mut R) -> io::Result<Self> 
     where
         Self: std::marker::Sized,
         R: io::AsyncRead + Unpin + Send
