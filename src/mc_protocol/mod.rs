@@ -1,8 +1,8 @@
-mod codec;
 pub mod data_types;
 pub mod packets;
 
-pub use codec::Codec;
+mod old_codec;
+pub use old_codec::Codec;
 
 use tokio::io;
 use std::marker::{Unpin, Send};
