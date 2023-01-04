@@ -25,6 +25,12 @@ impl McProtocol for HandshakePacket {
     where
         R: io::AsyncRead + Unpin + Send
     {
+        {
+            let packet_id = reader.read_u8().await?;
+            if packet_id != 0 {
+                return Err(io::Error::new(io::ErrorKind::InvalidData, format!("unexpected packet ID: {packet_id}")))
+            }
+        }
         let protocol_version = McVarint::deserialize_read(reader).await?;
         let server_address = String::deserialize_read(reader).await?;
         let server_port = reader.read_u16().await?;
@@ -46,9 +52,10 @@ impl McProtocol for HandshakePacket {
     where
         W: io::AsyncWrite + Unpin + Send
     {
+        writer.write_u8(0).await?;
         self.protocol_version.serialize_write(writer).await?;
-        if self.server_address.chars().count() > 255 {
-            return Err(io::Error::new(io::ErrorKind::InvalidInput, "server_address can't be over 255 characters long"))
+        if self.server_address.as_bytes().len() > 255 {
+            return Err(io::Error::new(io::ErrorKind::InvalidInput, "server_address can't be over 255 bytes long"))
         }
         self.server_address.serialize_write(writer).await?;
         writer.write_u16(self.server_port).await?;
