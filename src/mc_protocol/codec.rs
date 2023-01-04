@@ -34,10 +34,15 @@ impl Codec {
         })
     }
 
-    pub async fn read_packet(&mut self) -> io::Result<impl ServerboundPacket> {
+    pub async fn read_packet(&mut self) -> io::Result<ServerboundPacket> {
         match self.connection_state {
             ConnectionState::Handshaking => {
-                Ok(serverbound::HandshakePacket::deserialize_read(&mut self.reader).await?)
+                let packet = serverbound::HandshakePacket::deserialize_read(&mut self.reader).await?;
+                match packet.next_state {
+                    serverbound::NextState::Login => self.connection_state = ConnectionState::Login,
+                    serverbound::NextState::Status => self.connection_state = ConnectionState::Status,
+                };
+                Ok(ServerboundPacket::Handshake(packet))
             },
             _ => todo!(),
         }

@@ -8,7 +8,7 @@ use tokio::{
 };
 
 use crate::mc_protocol::data_types::mc_varint::into_varint;
-use crate::mc_protocol::Codec;
+use crate::mc_protocol::OldCodec;
 
 /// Encodes the state of a connection being handled by a [`Spoofer`]
 enum RequestState {
@@ -156,7 +156,7 @@ async fn handle_connection(stream: TcpStream, show_debug: bool) -> io::Result<Re
 
     let mut request_state = RequestState::Handshake;
 
-    let mut codec = Codec::new(stream)?;
+    let mut codec = OldCodec::new(stream)?;
     loop {
         let message = codec.read_message().await?;
 

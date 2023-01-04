@@ -7,21 +7,30 @@ use tokio::io::{self, AsyncReadExt, AsyncWriteExt};
 use async_trait::async_trait;
 use std::marker::{Unpin, Send};
 
-pub trait ServerboundPacket: McProtocol {}
-
-pub struct HandshakePacket{
-    protocol_version: McVarint,
-    server_address: String,
-    server_port: u16,
-    next_state: NextState,
+pub enum ServerboundPacket {
+    Handshake(HandshakePacket),
 }
 
-enum NextState {
+pub struct HandshakePacket{
+    pub protocol_version: McVarint,
+    pub server_address: String,
+    pub server_port: u16,
+    pub next_state: NextState,
+}
+
+pub enum NextState {
     Login,
     Status
 }
 
-impl ServerboundPacket for HandshakePacket {}
+impl std::fmt::Display for NextState {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", match self {
+            Self::Login => "Login",
+            Self::Status => "Status"
+        })
+    }
+}
 
 #[async_trait]
 impl McProtocol for HandshakePacket {
