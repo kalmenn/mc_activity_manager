@@ -40,14 +40,12 @@ impl crate::mc_protocol::McProtocol for McVarint {
 impl From<i32> for McVarint {
     fn from(value: i32) -> Self {
         // Create a vector of the right size
-        let number_of_bytes: usize = {
-            let number_of_bits = 32 - value.leading_zeros() as usize;
-            (number_of_bits / 7) + (number_of_bits % 7 > 0) as usize
-        };
+        let number_of_bits = 32 - value.leading_zeros() as usize;
+        let number_of_bytes: usize = (number_of_bits / 7) + (number_of_bits % 7 > 0) as usize;
         let mut bytes = vec![0_u8; number_of_bytes];
 
         // Make groups of 7 bits
-        for bit in 0..32 {
+        for bit in 0..number_of_bits {
             bytes[(bit) / 7] += 2_u8.pow((bit % 7) as u32) * (value >> bit & 1) as u8;
         }
 
@@ -188,6 +186,8 @@ impl VarintReader {
 
 #[cfg(test)]
 mod tests {
+    use crate::mc_protocol::McProtocol;
+
     use super::*;
 
     #[test]
@@ -236,5 +236,30 @@ mod tests {
             500,
             from_reader(&mut reader).await.unwrap()
         );
+    }
+
+    use tokio::io::{BufReader, BufWriter};
+
+    #[tokio::test]
+    async fn mc_varint_create_test() {
+        let varint = McVarint::from(500);
+
+        let bytes = {
+            let mut writer = BufWriter::new(Vec::<u8>::new());
+            varint.serialize_write(&mut writer).await.unwrap();
+            writer.into_inner()
+        };
+
+        assert_eq!(vec![0b11110100_u8, 0b00000011_u8], bytes);
+    }
+
+    #[tokio::test]
+    async fn mc_varint_read_test() {
+        let bytes = vec![0b11110100_u8, 0b00000011_u8];
+        let mut reader = BufReader::new(bytes.as_slice());
+
+        let number = i32::from(McVarint::deserialize_read(&mut reader).await.unwrap());
+
+        assert_eq!(500, number);
     }
 }
