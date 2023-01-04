@@ -48,8 +48,8 @@ impl McProtocol for HandshakePacket {
         let server_address = String::deserialize_read(reader).await?;
         let server_port = reader.read_u16().await?;
         let next_state = match reader.read_u8().await? {
-            1 => NextState::Login,
-            2 => NextState::Status,
+            1 => NextState::Status,
+            2 => NextState::Login,
             _ => return Err(io::Error::new(io::ErrorKind::InvalidData, "next_state field wasn't a valid enum variant")),
         };
 
