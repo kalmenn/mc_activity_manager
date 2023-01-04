@@ -53,7 +53,10 @@ impl McProtocol for StatusPacket {
                 let payload = reader.read_i64().await?;
                 Ok(StatusPacket::PingResponse { payload })
             },
-            packet_id => Err(io::Error::new(io::ErrorKind::InvalidData, format!("unexpected packet ID: {packet_id}"))),
+            other => Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!("unexpected packet ID: {other}")
+            )),
         }
     }
 }

@@ -65,7 +65,13 @@ impl Codec {
                 };
                 ServerboundPacket::Handshake(packet)
             },
-            _ => todo!(),
+            ConnectionState::Login => {
+                todo!()
+            },
+            ConnectionState::Status => {
+                let packet = serverbound::StatusPacket::deserialize_read(&mut packet_reader).await?;
+                ServerboundPacket::Status(packet)
+            }
         };
 
         // We put back the reader of the full stream

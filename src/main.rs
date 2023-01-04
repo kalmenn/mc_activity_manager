@@ -46,18 +46,53 @@ async fn main() {
 
                             let mut codec = Codec::new(stream)?;
 
-                            // TODO: We instantly break for now as only one request type is handled
-                            #[allow(clippy::never_loop)]
-                            loop {
-                                match codec.read_packet().await? {
-                                    ServerboundPacket::Handshake(packet) => {
-                                        status(&format!("Switching state to: {}", packet.next_state));
-                                        break
-                                    }
-                                    // TODO: Status requests
-                                    // TODO: Login Requests
-                                };
-                            }
+                            loop {match codec.read_packet().await? {
+                                ServerboundPacket::Handshake(packet) => {
+                                    status(&format!("Switching state to: {}", packet.next_state));
+                                },
+                                ServerboundPacket::Status(packet) => {match packet {
+                                    serverbound::StatusPacket::StatusRequest{} => {
+                                        status("Requested status");
+                                        let json_response = serde_json::json!({
+                                            "description": [
+                                                {
+                                                    "text": "Hors Ligne ...\n",
+                                                    "color": "gold"
+                                                },
+                                                {
+                                                    "text": "Connectez vous pour démarrer le serveur",
+                                                    "color": "dark_green"
+                                                }
+                                            ],
+                                            "players": {
+                                                "max": 0,
+                                                "online": 1,
+                                                "sample": [
+                                                    {
+                                                        "name": "J'ai pas hacké je jure",
+                                                        "id": "4566e69f-c907-48ee-8d71-d7ba5aa00d20"
+                                                    }
+                                                ]
+                                            },
+                                            "version": {
+                                                "name": "1.19.2",
+                                                "protocol": 760
+                                            }
+                                        }).to_string();
+
+                                        println!("{json_response}");
+
+                                        codec.send_packet(clientbound::StatusPacket::StatusResponse { json_response }).await?;
+                                        status("Sent status");
+                                    },
+                                    serverbound::StatusPacket::PingRequest{ payload } => {
+                                        status("Requested ping");
+                                        codec.send_packet(clientbound::StatusPacket::PingResponse{payload}).await?;
+                                        status("Sent pong");
+                                    },
+                                }},
+                                // TODO: Login Requests
+                            };}
                             io::Result::Ok(true)
                         }.await {
                             Ok(should_we_start) => {
