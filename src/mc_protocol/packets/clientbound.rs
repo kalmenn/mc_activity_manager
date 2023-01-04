@@ -6,6 +6,8 @@ use tokio::io::{self, AsyncReadExt, AsyncWriteExt};
 use async_trait::async_trait;
 use std::marker::{Unpin, Send};
 
+pub trait ClientboundPacket: McProtocol {}
+
 pub enum StatusPacket {
     StatusResponse {
         json_response: String,
@@ -14,6 +16,8 @@ pub enum StatusPacket {
         payload: i64,
     },
 }
+
+impl ClientboundPacket for StatusPacket {}
 
 #[async_trait]
 impl McProtocol for StatusPacket {

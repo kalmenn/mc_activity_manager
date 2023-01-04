@@ -1,6 +1,8 @@
 pub mod data_types;
 pub mod packets;
 
+mod codec;
+
 mod old_codec;
 pub use old_codec::Codec;
 
@@ -10,7 +12,7 @@ use std::marker::{Unpin, Send};
 /// Something is McProtocol if it can serialize / deserialize itself
 /// according to the minecraft server protocol
 #[async_trait::async_trait]  
-trait McProtocol {
+pub trait McProtocol {
     async fn serialize_write<W>(&self, writer: &mut W) -> io::Result<()>
     where
         W: io::AsyncWrite + Unpin + Send
@@ -20,10 +22,4 @@ trait McProtocol {
         Self: std::marker::Sized,
         R: io::AsyncRead + Unpin + Send
     ;
-}
-
-pub enum ConnectionState {
-    Handshaking,
-    Status,
-    Login,
 }
