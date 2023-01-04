@@ -4,13 +4,12 @@ pub mod packets;
 
 pub use codec::Codec;
 
-use async_trait::async_trait;
 use tokio::io;
 use std::marker::{Unpin, Send};
 
 /// Something is McProtocol if it can serialize / deserialize itself
 /// according to the minecraft server protocol
-#[async_trait]  
+#[async_trait::async_trait]  
 trait McProtocol {
     async fn serialize_write<W>(&self, writer: &mut W) -> io::Result<()>
     where

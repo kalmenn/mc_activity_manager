@@ -1,5 +1,5 @@
 use crate::mc_protocol::McProtocol;
-use super::mc_varint::McVarint;
+use super::McVarint;
 
 use tokio::io::{self, AsyncWriteExt, AsyncReadExt};
 
@@ -14,8 +14,7 @@ impl McProtocol for String {
         let bytes = self.as_bytes();
         McVarint::from(bytes.len() as i32).serialize_write(writer).await?;
         writer.write_all(bytes).await?;
-        writer.flush().await?;
-        Ok(())
+        writer.flush().await
     }
 
     async fn deserialize_read<R>(reader: &mut R) -> io::Result<Self> 

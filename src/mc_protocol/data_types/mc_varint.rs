@@ -14,8 +14,7 @@ impl crate::mc_protocol::McProtocol for McVarint {
         W: io::AsyncWrite + Unpin + Send
     {
         writer.write_all(&self.0).await?;
-        writer.flush().await?;
-        Ok(())
+        writer.flush().await
     }
 
     async fn deserialize_read<R>(reader: &mut R) -> io::Result<Self> 

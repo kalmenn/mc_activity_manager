@@ -1,6 +1,6 @@
 use crate::mc_protocol::{
     McProtocol,
-    data_types::mc_varint::McVarint,
+    data_types::McVarint,
 };
 
 use tokio::io::{self, AsyncReadExt, AsyncWriteExt};
@@ -64,8 +64,6 @@ impl McProtocol for HandshakePacket {
             NextState::Status => 2,
         }).await?;
 
-        writer.flush().await?;
-
-        Ok(())
+        writer.flush().await
     }
 }
