@@ -78,7 +78,7 @@ impl McProtocol for HandshakePacket {
             NextState::Status => 2,
         }).await?;
 
-        writer.flush().await
+        Ok(())
     }
 }
 
@@ -102,8 +102,10 @@ impl McProtocol for StatusPacket {
                 writer.write_i64(*payload).await?;
             },
         };
-        writer.flush().await
+
+        Ok(())
     }
+
     async fn deserialize_read<R>(reader: &mut R) -> io::Result<Self> 
     where
         Self: std::marker::Sized,

@@ -1,3 +1,5 @@
+use std::io::Read;
+
 use tokio::{
     net::{TcpStream, tcp::{OwnedReadHalf, OwnedWriteHalf}},
     io::{self, BufReader, BufWriter, AsyncReadExt, AsyncWriteExt}
@@ -83,6 +85,7 @@ impl Codec {
         let packet_body = {
             let mut writer = BufWriter::new(Vec::<u8>::new());
             packet.serialize_write(&mut writer).await?;
+            writer.flush().await?;
             writer.into_inner()
         };
 
@@ -96,8 +99,8 @@ impl Codec {
             }
         ).serialize_write(&mut self.writer).await?;
 
-        self.writer.write_all(&packet_body).await?;
+        self.writer.write_all(packet_body.as_slice()).await?;
 
-        Ok(())
+        self.writer.flush().await
     }
 }

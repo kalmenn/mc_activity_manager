@@ -79,9 +79,6 @@ async fn main() {
                                                 "protocol": 760
                                             }
                                         }).to_string();
-
-                                        println!("{json_response}");
-
                                         codec.send_packet(clientbound::StatusPacket::StatusResponse { json_response }).await?;
                                         status("Sent status");
                                     },

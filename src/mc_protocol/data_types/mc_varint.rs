@@ -14,7 +14,7 @@ impl crate::mc_protocol::McProtocol for McVarint {
         W: io::AsyncWrite + Unpin + Send
     {
         writer.write_all(&self.0).await?;
-        writer.flush().await
+        Ok(())
     }
 
     async fn deserialize_read<R>(reader: &mut R) -> io::Result<Self> 
@@ -39,6 +39,10 @@ impl crate::mc_protocol::McProtocol for McVarint {
 
 impl From<i32> for McVarint {
     fn from(value: i32) -> Self {
+        if value == 0 {
+            return McVarint(vec![0])
+        }
+
         // Create a vector of the right size
         let number_of_bits = 32 - value.leading_zeros() as usize;
         let number_of_bytes: usize = (number_of_bits / 7) + (number_of_bits % 7 > 0) as usize;
@@ -247,9 +251,11 @@ mod tests {
         let bytes = {
             let mut writer = BufWriter::new(Vec::<u8>::new());
             varint.serialize_write(&mut writer).await.unwrap();
+            writer.flush().await.unwrap();
             writer.into_inner()
         };
 
+        println!("{bytes:?}");
         assert_eq!(vec![0b11110100_u8, 0b00000011_u8], bytes);
     }
 
@@ -261,5 +267,19 @@ mod tests {
         let number = i32::from(McVarint::deserialize_read(&mut reader).await.unwrap());
 
         assert_eq!(500, number);
+    }
+
+    #[tokio::test]
+    async fn mc_varint_null() {
+        let varint = McVarint::from(0);
+
+        let bytes = {
+            let mut writer = BufWriter::new(Vec::<u8>::new());
+            varint.serialize_write(&mut writer).await.unwrap();
+            writer.flush().await.unwrap();
+            writer.into_inner()
+        };
+
+        assert_eq!(vec![0b00000000_u8], bytes);
     }
 }
