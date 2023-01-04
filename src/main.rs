@@ -26,7 +26,8 @@ async fn main() {
             let listener = TcpListener::bind(socket)
                 .await
                 .expect("Couldn't bind to TCP socket");
-            println!("bound to tcp socket");
+
+            println!("\n\x1b[38;2;0;200;0mSpoofer listening on port {}\x1b[0m\n", socket.port());
 
             let (sender, mut reciever) = tokio::sync::mpsc::channel::<()>(1);
 
@@ -79,12 +80,12 @@ async fn main() {
                                                 "protocol": 760
                                             }
                                         }).to_string();
-                                        codec.send_packet(clientbound::StatusPacket::StatusResponse { json_response }).await?;
+                                        codec.send_packet(clientbound::StatusPacket::StatusResponse{ json_response }).await?;
                                         status("Sent status");
                                     },
                                     serverbound::StatusPacket::PingRequest{ payload } => {
                                         status("Requested ping");
-                                        codec.send_packet(clientbound::StatusPacket::PingResponse{payload}).await?;
+                                        codec.send_packet(clientbound::StatusPacket::PingResponse{ payload }).await?;
                                         status("Sent pong");
                                     },
                                 }},

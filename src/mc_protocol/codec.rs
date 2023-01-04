@@ -2,7 +2,7 @@ use std::io::Read;
 
 use tokio::{
     net::{TcpStream, tcp::{OwnedReadHalf, OwnedWriteHalf}},
-    io::{self, BufReader, BufWriter, AsyncReadExt, AsyncWriteExt}
+    io::{self, BufReader, BufWriter, AsyncReadExt, AsyncWriteExt, AsyncBufReadExt}
 };
 
 use crate::mc_protocol::{
@@ -50,8 +50,6 @@ impl Codec {
             )),
         };
 
-        println!("packet length: {packet_length}");
-
         // This will only read a single packet
         let mut packet_reader = self.reader
             .take()
@@ -75,6 +73,17 @@ impl Codec {
                 ServerboundPacket::Status(packet)
             }
         };
+
+        {
+            let mut remaining_bytes = Vec::<u8>::new();
+            let number_of_remaining_bytes = packet_reader.read_to_end(&mut remaining_bytes).await?;
+            if number_of_remaining_bytes != 0 {
+                return Err(io::Error::new(
+                    io::ErrorKind::Other,
+                    format!("{number_of_remaining_bytes} bytes were not consumed by the implementation of deserialize_read")
+                ))
+            }
+        }
 
         // We put back the reader of the full stream
         self.reader = Some(packet_reader.into_inner());
