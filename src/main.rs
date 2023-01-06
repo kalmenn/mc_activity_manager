@@ -51,10 +51,6 @@ async fn main() {
                                     GenericPacket::Serverbound(generic_packets::serverbound::ServerboundPacket::Handshake(packet)) => {
                                         status(&format!("Switching state to: {}", packet.next_state));
                                     },
-                                    _ => break Err(io::Error::new(
-                                        io::ErrorKind::InvalidData,
-                                        "unexpected protocol-version-generic packet"
-                                    ))
                                 }
                                 Packet::V761(V761Packet::ServerboundPacket(packet)) => match packet {
                                     ServerboundPacket::Status(packet) => {match packet {

@@ -26,8 +26,8 @@ pub struct Codec {
     reader: Option<BufReader<OwnedReadHalf>>,
     writer: BufWriter<OwnedWriteHalf>,
     connection_state: ConnectionState,
-    protocol_version: Option<ProtocolVersion>,
     role: Role,
+    protocol_version: Option<ProtocolVersion>,
 }
 
 impl Codec {
@@ -38,8 +38,8 @@ impl Codec {
             reader: Some(BufReader::new(read_half)),
             writer: BufWriter::new(write_half),
             connection_state: ConnectionState::Handshaking,
+            role: role,
             protocol_version: protocol_version,
-            role: role
         })
     }
 
@@ -78,7 +78,7 @@ impl Codec {
                 NextState::Status => ConnectionState::Status,
                 NextState::Login => ConnectionState::Login,
             };
-            Ok(Packet::Generic(GenericPacket::Serverbound(generic_packets::serverbound::ServerboundPacket::Handshake(packet))))
+            Ok(dbg!(Packet::Generic(GenericPacket::Serverbound(generic_packets::serverbound::ServerboundPacket::Handshake(packet)))))
         } else {
             let packet = Packet::deserialize_read(
                 &mut packet_reader,
