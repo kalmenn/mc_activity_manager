@@ -4,11 +4,13 @@ use tokio::io::{
     AsyncWriteExt,
 };
 
+use crate::mc_protocol::McProtocol;
+
 #[derive(Clone)]
 pub struct McVarint(Vec<u8>);
 
 #[async_trait::async_trait]
-impl crate::mc_protocol::McProtocol for McVarint {
+impl McProtocol for McVarint {
     async fn serialize_write<W>(&self, writer: &mut W) -> io::Result<()>
     where
         W: io::AsyncWrite + Unpin + Send
@@ -75,6 +77,36 @@ impl From<McVarint> for i32 {
 impl std::fmt::Debug for McVarint {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", i32::from(self.clone()))
+    }
+}
+
+impl TryFrom<McVarint> for u32 {
+    type Error = io::Error;
+
+    fn try_from(value: McVarint) -> Result<Self, Self::Error> {
+        let value_i32: i32 = value.into();
+        Ok(match value_i32.try_into() {
+            Ok(value) => value,
+            Err(_) => return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!("value {value_i32} outside of u32 bounds")
+            ))
+        })
+    }
+}
+
+impl TryFrom<u32> for McVarint {
+    type Error = io::Error;
+
+    fn try_from(value: u32) -> Result<Self, Self::Error> {
+        let value_i32: i32 = match value.try_into() {
+            Ok(value) => value,
+            Err(_) => return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!("value {value} outside of i32 bounds")
+            ))
+        };
+        Ok(McVarint::from(value_i32))
     }
 }
 
