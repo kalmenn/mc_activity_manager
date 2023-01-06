@@ -1,4 +1,7 @@
-use std::net::SocketAddr;
+use std::{
+    net::SocketAddr,
+    borrow::BorrowMut
+};
 
 use tokio::{
     net::{
@@ -23,7 +26,7 @@ use crate::mc_protocol::{
 };
 
 pub struct Codec {
-    reader: Option<BufReader<OwnedReadHalf>>,
+    reader: BufReader<OwnedReadHalf>,
     writer: BufWriter<OwnedWriteHalf>,
     connection_state: ConnectionState,
     role: Role,
@@ -35,7 +38,7 @@ impl Codec {
     fn with_version_and_role(stream: TcpStream, protocol_version: Option<ProtocolVersion>, role: Role) -> io::Result<Self> {
         let (read_half, write_half) = stream.into_split();
         Ok(Codec { 
-            reader: Some(BufReader::new(read_half)),
+            reader: BufReader::new(read_half),
             writer: BufWriter::new(write_half),
             connection_state: ConnectionState::Handshaking,
             role: role,
@@ -53,31 +56,29 @@ impl Codec {
     }
 
     pub async fn read_packet(&mut self) -> io::Result<Packet> {
-        let packet_length: u64 = match i32::from(McVarint::deserialize_read(
-            self.reader.as_mut().expect("reader should have been put back from the previous take()")
-        ).await?).try_into() {
+        let packet_length: u64 = match i32::from(McVarint::deserialize_read(&mut self.reader).await?).try_into() {
             Ok(value) => value,
             Err(_) => return Err(io::Error::new(
                 io::ErrorKind::InvalidData,
                 "failed to convert packet length from i32 to u64. It was probably negative"
             )),
         };
-        
+
         dbg!(&packet_length);
 
         // This will only read a single packet
-        let mut packet_reader = self.reader
-            .take()
-            .expect("reader should have been put back from the previous take()")
-            .take(packet_length);
+        let mut packet_reader = self.reader.borrow_mut().take(packet_length);
 
         let packet = if let ConnectionState::Handshaking = self.connection_state {
             let packet = HandshakePacket::deserialize_read(&mut packet_reader).await?;
+
             self.protocol_version = Some(i32::from(packet.protocol_version.clone()).try_into()?);
+
             self.connection_state = match packet.next_state {
                 NextState::Status => ConnectionState::Status,
                 NextState::Login => ConnectionState::Login,
             };
+
             Ok(dbg!(Packet::Generic(GenericPacket::Serverbound(generic_packets::serverbound::ServerboundPacket::Handshake(packet)))))
         } else {
             let packet = Packet::deserialize_read(
@@ -102,8 +103,6 @@ impl Codec {
             Ok(packet)
         };
 
-        // We put back the reader of the full stream
-        self.reader = Some(packet_reader.into_inner());
         packet
     }
 
