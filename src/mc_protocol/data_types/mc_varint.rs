@@ -5,6 +5,7 @@ use tokio::io::{
     AsyncWriteExt,
 };
 
+#[derive(Clone)]
 pub struct McVarint(Vec<u8>);
 
 #[async_trait::async_trait]
@@ -69,6 +70,12 @@ impl From<McVarint> for i32 {
             number += ((byte.1 & 0b01111111) as i32) << (7 * byte.0)
         }
         number
+    }
+}
+
+impl std::fmt::Debug for McVarint {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", i32::from(self.clone()))
     }
 }
 

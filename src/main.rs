@@ -20,7 +20,7 @@ use tokio::{
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() {
-    let socket: SocketAddr = "127.0.0.1:6969".parse().expect("this should be a valid socket");
+    let socket: SocketAddr = "0.0.0.0:6969".parse().expect("this should be a valid socket");
     loop {
         {
             let listener = TcpListener::bind(socket)
@@ -89,7 +89,12 @@ async fn main() {
                                         status("Sent pong");
                                     },
                                 }},
-                                // TODO: Login Requests
+                                ServerboundPacket::Login(packet) => {match packet {
+                                    serverbound::LoginPacket::LoginStart { name, player_uuid } => {
+                                        status(&format!("recieved login request from {name} with uuid: {player_uuid:?}"));
+                                        break
+                                    },
+                                }},
                             };}
                             io::Result::Ok(true)
                         }.await {

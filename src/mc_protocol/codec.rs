@@ -1,8 +1,6 @@
-use std::io::Read;
-
 use tokio::{
     net::{TcpStream, tcp::{OwnedReadHalf, OwnedWriteHalf}},
-    io::{self, BufReader, BufWriter, AsyncReadExt, AsyncWriteExt, AsyncBufReadExt}
+    io::{self, BufReader, BufWriter, AsyncReadExt, AsyncWriteExt}
 };
 
 use crate::mc_protocol::{
@@ -50,6 +48,8 @@ impl Codec {
             )),
         };
 
+        dbg!(&packet_length);
+
         // This will only read a single packet
         let mut packet_reader = self.reader
             .take()
@@ -65,22 +65,24 @@ impl Codec {
                 };
                 ServerboundPacket::Handshake(packet)
             },
-            ConnectionState::Login => {
-                todo!()
-            },
             ConnectionState::Status => {
                 let packet = serverbound::StatusPacket::deserialize_read(&mut packet_reader).await?;
                 ServerboundPacket::Status(packet)
-            }
+            },
+            ConnectionState::Login => {
+                let packet = serverbound::LoginPacket::deserialize_read(&mut packet_reader).await?;
+                ServerboundPacket::Login(packet)
+            },
         };
 
+        dbg!(&packet);
+
         {
-            let mut remaining_bytes = Vec::<u8>::new();
-            let number_of_remaining_bytes = packet_reader.read_to_end(&mut remaining_bytes).await?;
-            if number_of_remaining_bytes != 0 {
+            let remaining_bytes = packet_reader.limit();
+            if remaining_bytes != 0 {
                 return Err(io::Error::new(
                     io::ErrorKind::Other,
-                    format!("{number_of_remaining_bytes} bytes were not consumed by the implementation of deserialize_read")
+                    format!("{remaining_bytes} bytes were not consumed by the implementation of deserialize_read")
                 ))
             }
         }

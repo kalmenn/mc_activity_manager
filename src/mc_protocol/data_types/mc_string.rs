@@ -17,7 +17,8 @@ impl McProtocol for String {
         Ok(())
     }
 
-    async fn deserialize_read<R>(reader: &mut R) -> io::Result<Self> 
+    #[allow(unused_assignments)]
+    async fn deserialize_read<R>(mut reader: &mut R) -> io::Result<Self> 
     where
         Self: std::marker::Sized,
         R: io::AsyncRead + Unpin + Send
@@ -30,12 +31,12 @@ impl McProtocol for String {
             )),
         };
 
-        let mut body = {
+        let mut body_reader = {
             reader.take(length.into())
         };
 
         let mut output = String::new();
-        if body.read_to_string(&mut output).await? == length as usize {
+        if body_reader.read_to_string(&mut output).await? == length as usize {
             Ok(output)
         } else {
             Err(io::Error::from(io::ErrorKind::UnexpectedEof))
