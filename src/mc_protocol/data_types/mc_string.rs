@@ -18,7 +18,7 @@ impl McProtocol for String {
     }
 
     #[allow(unused_assignments)]
-    async fn deserialize_read<R>(mut reader: &mut R) -> io::Result<Self> 
+    async fn deserialize_read<R>(reader: &mut R) -> io::Result<Self> 
     where
         Self: std::marker::Sized,
         R: io::AsyncRead + Unpin + Send

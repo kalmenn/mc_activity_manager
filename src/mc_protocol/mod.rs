@@ -4,9 +4,6 @@ pub mod packets;
 mod codec;
 pub use codec::Codec;
 
-mod old_codec;
-pub use old_codec::Codec as OldCodec;
-
 use tokio::io;
 use std::marker::{Unpin, Send};
 

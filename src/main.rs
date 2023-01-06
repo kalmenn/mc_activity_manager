@@ -1,4 +1,3 @@
-mod spoofer;
 mod minecraft_server_runner;
 mod mc_protocol;
 
@@ -7,7 +6,7 @@ use mc_protocol::{
     Codec,
     packets::{
         serverbound::{self, ServerboundPacket},
-        clientbound::{self, ClientboundPacket},
+        clientbound,
     },
 };
 
