@@ -1,5 +1,6 @@
 pub mod data_types;
-pub mod packets_761;
+pub mod v761_packets;
+pub mod generic_packets;
 
 mod codec;
 pub use codec::Codec;
@@ -23,6 +24,7 @@ pub trait McProtocol {
 }
 
 /// Encodes the currently supported protocol versions
+#[derive(Debug)]
 pub enum ProtocolVersion {
     V760,
     V761,
@@ -39,6 +41,59 @@ impl TryFrom<i32> for ProtocolVersion {
                 io::ErrorKind::Other,
                 format!("protocol version {other} not supported")
             )),
+        }
+    }
+}
+
+/// Encodes the role of the codec in the connection.
+#[derive(Debug)]
+pub enum Role {
+    Server,
+    Client,
+}
+
+#[derive(Debug)]
+pub enum ConnectionState {
+    Handshaking,
+    Status,
+    Login,
+}
+
+use self::v761_packets::V761Packet;
+use self::generic_packets::GenericPacket;
+
+#[derive(Debug)]
+pub enum Packet {
+    V761(V761Packet),
+    Generic(GenericPacket),
+}
+
+impl Packet {
+    pub async fn deserialize_read<R>(reader: &mut R, connection_state: &ConnectionState, role: &Role, protocol_version: &Option<ProtocolVersion>) -> io::Result<Self> 
+    where
+        Self: std::marker::Sized,
+        R: io::AsyncRead + Unpin + Send
+    {
+        if let Some(protocol_version) = protocol_version {
+            match protocol_version {
+                ProtocolVersion::V760 => Err(io::Error::new(
+                    io::ErrorKind::Other,
+                    "protocol version 760 not yet implemented"
+                )),
+                ProtocolVersion::V761 => Ok(Packet::V761(V761Packet::deserialize_read(reader, connection_state, role).await?)),
+            }
+        } else {
+            Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "The protocol version must be known when deserializing with Packet::deserializing_read()"
+            ))
+        }
+    }
+
+    pub fn get_protocol_version(&self) -> Option<ProtocolVersion> {
+        match self {
+            Packet::V761(_) => Some(ProtocolVersion::V761),
+            Packet::Generic(_) => None
         }
     }
 }

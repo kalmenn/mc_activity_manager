@@ -1,5 +1,10 @@
+use std::net::SocketAddr;
+
 use tokio::{
-    net::{TcpStream, tcp::{OwnedReadHalf, OwnedWriteHalf}},
+    net::{
+        TcpStream,
+        tcp::{OwnedReadHalf, OwnedWriteHalf},
+    },
     io::{self, BufReader, BufWriter, AsyncReadExt, AsyncWriteExt}
 };
 
@@ -7,44 +12,47 @@ use crate::mc_protocol::{
     data_types::McVarint,
     McProtocol,
     ProtocolVersion,
+    Role,
+    ConnectionState,
+    Packet, 
+    generic_packets::{
+        self,
+        GenericPacket,
+        serverbound::{HandshakePacket, NextState},
+    },
 };
-
-use super::packets_761::{
-    serverbound,
-    ServerboundPacket,
-    ClientboundPacket,
-};
-
-enum ConnectionState {
-    Handshaking,
-    Status,
-    Login,
-}
 
 pub struct Codec {
     reader: Option<BufReader<OwnedReadHalf>>,
     writer: BufWriter<OwnedWriteHalf>,
     connection_state: ConnectionState,
     protocol_version: Option<ProtocolVersion>,
+    role: Role,
 }
 
 impl Codec {
     /// Handles a connection from a given TcpStream
-    pub fn with_version(stream: TcpStream, protocol_version: Option<ProtocolVersion>) -> io::Result<Self> {
+    fn with_version_and_role(stream: TcpStream, protocol_version: Option<ProtocolVersion>, role: Role) -> io::Result<Self> {
         let (read_half, write_half) = stream.into_split();
         Ok(Codec { 
             reader: Some(BufReader::new(read_half)),
             writer: BufWriter::new(write_half),
             connection_state: ConnectionState::Handshaking,
             protocol_version: protocol_version,
+            role: role
         })
     }
 
-    pub fn new(stream: TcpStream) -> io::Result<Self> {
-        Self::with_version(stream, None)
+    pub fn new_server(stream: TcpStream) -> io::Result<Self> {
+        Self::with_version_and_role(stream, None, Role::Server)
     }
 
-    pub async fn read_packet(&mut self) -> io::Result<ServerboundPacket> {
+    pub async fn new_client(server_addr: SocketAddr) -> io::Result<Self> {
+        let stream = TcpStream::connect(server_addr).await?;
+        Self::with_version_and_role(stream, None, Role::Server)
+    }
+
+    pub async fn read_packet(&mut self) -> io::Result<Packet> {
         let packet_length: u64 = match i32::from(McVarint::deserialize_read(
             self.reader.as_mut().expect("reader should have been put back from the previous take()")
         ).await?).try_into() {
@@ -54,7 +62,7 @@ impl Codec {
                 "failed to convert packet length from i32 to u64. It was probably negative"
             )),
         };
-
+        
         dbg!(&packet_length);
 
         // This will only read a single packet
@@ -63,47 +71,43 @@ impl Codec {
             .expect("reader should have been put back from the previous take()")
             .take(packet_length);
 
-        let packet = match self.connection_state {
-            ConnectionState::Handshaking => {
-                let packet = serverbound::HandshakePacket::deserialize_read(&mut packet_reader).await?;
-                match packet.next_state {
-                    serverbound::NextState::Login => self.connection_state = ConnectionState::Login,
-                    serverbound::NextState::Status => self.connection_state = ConnectionState::Status,
-                };
-                ServerboundPacket::Handshake(packet)
-            },
-            ConnectionState::Status => {
-                let packet = serverbound::StatusPacket::deserialize_read(&mut packet_reader).await?;
-                ServerboundPacket::Status(packet)
-            },
-            ConnectionState::Login => {
-                let packet = serverbound::LoginPacket::deserialize_read(&mut packet_reader).await?;
-                ServerboundPacket::Login(packet)
-            },
-        };
-
-        dbg!(&packet);
-
-        if let ServerboundPacket::Handshake(packet) = &packet {
+        let packet = if let ConnectionState::Handshaking = self.connection_state {
+            let packet = HandshakePacket::deserialize_read(&mut packet_reader).await?;
             self.protocol_version = Some(i32::from(packet.protocol_version.clone()).try_into()?);
-        }
+            self.connection_state = match packet.next_state {
+                NextState::Status => ConnectionState::Status,
+                NextState::Login => ConnectionState::Login,
+            };
+            Ok(Packet::Generic(GenericPacket::Serverbound(generic_packets::serverbound::ServerboundPacket::Handshake(packet))))
+        } else {
+            let packet = Packet::deserialize_read(
+                &mut packet_reader,
+                &self.connection_state,
+                &self.role,
+                &self.protocol_version
+            ).await?;
 
-        {
-            let remaining_bytes = packet_reader.limit();
-            if remaining_bytes != 0 {
-                return Err(io::Error::new(
-                    io::ErrorKind::Other,
-                    format!("{remaining_bytes} bytes were not consumed by the implementation of deserialize_read")
-                ))
+            dbg!(&packet);
+
+            {
+                let remaining_bytes = packet_reader.limit();
+                if remaining_bytes != 0 {
+                    return Err(io::Error::new(
+                        io::ErrorKind::Other,
+                        format!("{remaining_bytes} bytes were not consumed by the implementation of deserialize_read")
+                    ))
+                }
             }
-        }
+
+            Ok(packet)
+        };
 
         // We put back the reader of the full stream
         self.reader = Some(packet_reader.into_inner());
-        Ok(packet)
+        packet
     }
 
-    pub async fn send_packet(&mut self, packet: impl ClientboundPacket) -> io::Result<()> {
+    pub async fn send_packet(&mut self, packet: impl McProtocol) -> io::Result<()> {
         let packet_body = {
             let mut writer = BufWriter::new(Vec::<u8>::new());
             packet.serialize_write(&mut writer).await?;

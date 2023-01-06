@@ -1,13 +1,6 @@
-use crate::mc_protocol::{
-    McProtocol,
-};
+use tokio::io::{self, AsyncWriteExt, AsyncReadExt};
 
-use tokio::io::{self, AsyncReadExt, AsyncWriteExt};
-use async_trait::async_trait;
-use std::marker::{Unpin, Send};
-
-pub trait ClientboundPacket: McProtocol {}
-
+#[derive(Debug)]
 pub enum StatusPacket {
     StatusResponse {
         json_response: String,
@@ -17,10 +10,8 @@ pub enum StatusPacket {
     },
 }
 
-impl ClientboundPacket for StatusPacket {}
-
-#[async_trait]
-impl McProtocol for StatusPacket {
+#[async_trait::async_trait]
+impl crate::mc_protocol::McProtocol for StatusPacket {
     async fn serialize_write<W>(&self, writer: &mut W) -> io::Result<()>
     where
         W: io::AsyncWrite + Unpin + Send

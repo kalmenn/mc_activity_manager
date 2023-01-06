@@ -4,10 +4,10 @@ mod mc_protocol;
 use minecraft_server_runner::McServer;
 use mc_protocol::{
     Codec,
-    packets_761::{
-        serverbound::{self, ServerboundPacket},
-        clientbound,
-    },
+    Packet,
+    V761_packets::*,
+    generic_packets::{self, GenericPacket},
+    ProtocolVersion,
 };
 
 use std::net::SocketAddr;
@@ -44,58 +44,73 @@ async fn main() {
                                 println!("{} → {}", address, message);
                             };
 
-                            let mut codec = Codec::new(stream)?;
+                            let mut codec = Codec::new_server(stream)?;
 
                             loop {match codec.read_packet().await? {
-                                ServerboundPacket::Handshake(packet) => {
-                                    status(&format!("Switching state to: {}", packet.next_state));
-                                },
-                                ServerboundPacket::Status(packet) => {match packet {
-                                    serverbound::StatusPacket::StatusRequest{} => {
-                                        status("Requested status");
-                                        let json_response = serde_json::json!({
-                                            "description": [
-                                                {
-                                                    "text": "Hors Ligne ...\n",
-                                                    "color": "gold"
-                                                },
-                                                {
-                                                    "text": "Connectez vous pour démarrer le serveur",
-                                                    "color": "dark_green"
-                                                }
-                                            ],
-                                            "players": {
-                                                "max": 0,
-                                                "online": 1,
-                                                "sample": [
+                                Packet::Generic(packet) => match packet {
+                                    GenericPacket::Serverbound(generic_packets::serverbound::ServerboundPacket::Handshake(packet)) => {
+                                        status(&format!("Switching state to: {}", packet.next_state));
+                                    },
+                                    _ => break Err(io::Error::new(
+                                        io::ErrorKind::InvalidData,
+                                        "unexpected protocol-version-generic packet"
+                                    ))
+                                }
+                                Packet::V761(V761Packet::ServerboundPacket(packet)) => match packet {
+                                    ServerboundPacket::Status(packet) => {match packet {
+                                        serverbound::StatusPacket::StatusRequest{} => {
+                                            status("Requested status");
+                                            let json_response = serde_json::json!({
+                                                "description": [
                                                     {
-                                                        "name": "J'ai pas hacké je jure",
-                                                        "id": "4566e69f-c907-48ee-8d71-d7ba5aa00d20"
+                                                        "text": "Hors Ligne ...\n",
+                                                        "color": "gold"
+                                                    },
+                                                    {
+                                                        "text": "Connectez vous pour démarrer le serveur",
+                                                        "color": "dark_green"
                                                     }
-                                                ]
-                                            },
-                                            "version": {
-                                                "name": "1.19.2",
-                                                "protocol": 760
-                                            }
-                                        }).to_string();
-                                        codec.send_packet(clientbound::StatusPacket::StatusResponse{ json_response }).await?;
-                                        status("Sent status");
-                                    },
-                                    serverbound::StatusPacket::PingRequest{ payload } => {
-                                        status("Requested ping");
-                                        codec.send_packet(clientbound::StatusPacket::PingResponse{ payload }).await?;
-                                        status("Sent pong");
-                                    },
-                                }},
-                                ServerboundPacket::Login(packet) => {match packet {
-                                    serverbound::LoginPacket::LoginStart { name, player_uuid } => {
-                                        status(&format!("recieved login request from {name} with uuid: {player_uuid:?}"));
-                                        break
-                                    },
-                                }},
-                            };}
-                            io::Result::Ok(true)
+                                                ],
+                                                "players": {
+                                                    "max": 0,
+                                                    "online": 1,
+                                                    "sample": [
+                                                        {
+                                                            "name": "J'ai pas hacké je jure",
+                                                            "id": "4566e69f-c907-48ee-8d71-d7ba5aa00d20"
+                                                        }
+                                                    ]
+                                                },
+                                                "version": {
+                                                    "name": "1.19.2",
+                                                    "protocol": 760
+                                                }
+                                            }).to_string();
+                                            codec.send_packet(clientbound::StatusPacket::StatusResponse{ json_response }).await?;
+                                            status("Sent status");
+                                        },
+                                        serverbound::StatusPacket::PingRequest{ payload } => {
+                                            status("Requested ping");
+                                            codec.send_packet(clientbound::StatusPacket::PingResponse{ payload }).await?;
+                                            status("Sent pong");
+                                        },
+                                    }},
+                                    ServerboundPacket::Login(packet) => {match packet {
+                                        serverbound::LoginPacket::LoginStart { name, player_uuid } => {
+                                            status(&format!("recieved login request from {name} with uuid: {player_uuid:?}"));
+                                            break io::Result::Ok(true)
+                                        },
+                                    }},
+                                    other => break Err(io::Error::new(
+                                        io::ErrorKind::Other,
+                                        format!("got an unsupported packet: {other:?}")
+                                    ))
+                                },
+                                other => break Err(io::Error::new(
+                                    io::ErrorKind::InvalidData,
+                                    format!("unsupported protocol version: {:?}", Option::<ProtocolVersion>::from(other.get_protocol_version()))
+                                )),
+                            }}
                         }.await {
                             Ok(should_we_start) => {
                                 println!("Closed connection to {address}");
@@ -108,12 +123,12 @@ async fn main() {
                             }
                         }
                     });
-                    false
+                    false // Don't start the server
                 },
                 _ = reciever.recv() => {
                     // There should always be at least one sender alive.
                     // But just in case, we return anyway if we recieve None
-                    true // We should start the server
+                    true // Start the server
                 }
             ){break}}
         }
