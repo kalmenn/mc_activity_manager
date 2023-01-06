@@ -6,6 +6,7 @@ use tokio::{
 use crate::mc_protocol::{
     data_types::McVarint,
     McProtocol,
+    ProtocolVersion,
 };
 
 use super::packets_761::{
@@ -24,17 +25,23 @@ pub struct Codec {
     reader: Option<BufReader<OwnedReadHalf>>,
     writer: BufWriter<OwnedWriteHalf>,
     connection_state: ConnectionState,
+    protocol_version: Option<ProtocolVersion>,
 }
 
 impl Codec {
     /// Handles a connection from a given TcpStream
-    pub fn new(stream: TcpStream) -> io::Result<Self> {
+    pub fn with_version(stream: TcpStream, protocol_version: Option<ProtocolVersion>) -> io::Result<Self> {
         let (read_half, write_half) = stream.into_split();
         Ok(Codec { 
             reader: Some(BufReader::new(read_half)),
             writer: BufWriter::new(write_half),
-            connection_state: ConnectionState::Handshaking
+            connection_state: ConnectionState::Handshaking,
+            protocol_version: protocol_version,
         })
+    }
+
+    pub fn new(stream: TcpStream) -> io::Result<Self> {
+        Self::with_version(stream, None)
     }
 
     pub async fn read_packet(&mut self) -> io::Result<ServerboundPacket> {
@@ -76,6 +83,10 @@ impl Codec {
         };
 
         dbg!(&packet);
+
+        if let ServerboundPacket::Handshake(packet) = &packet {
+            self.protocol_version = Some(i32::from(packet.protocol_version.clone()).try_into()?);
+        }
 
         {
             let remaining_bytes = packet_reader.limit();

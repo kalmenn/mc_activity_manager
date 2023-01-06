@@ -24,6 +24,21 @@ pub trait McProtocol {
 
 /// Encodes the currently supported protocol versions
 pub enum ProtocolVersion {
-    V761,
     V760,
+    V761,
+}
+
+impl TryFrom<i32> for ProtocolVersion {
+    type Error = io::Error;
+
+    fn try_from(value: i32) -> Result<Self, Self::Error> {
+        match value {
+            760 => Ok(Self::V760),
+            761 => Ok(Self::V761),
+            other => Err(Self::Error::new(
+                io::ErrorKind::Other,
+                format!("protocol version {other} not supported")
+            )),
+        }
+    }
 }
