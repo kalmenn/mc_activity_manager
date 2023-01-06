@@ -5,7 +5,7 @@ use minecraft_server_runner::McServer;
 use mc_protocol::{
     Codec,
     Packet,
-    V761_packets::*,
+    v761_packets::*,
     generic_packets::{self, GenericPacket},
     ProtocolVersion,
 };

@@ -23,6 +23,24 @@ pub trait McProtocol {
     ;
 }
 
+#[async_trait::async_trait]
+pub trait RoleLevelDeserialize {
+    async fn deserialize_read<R>(reader: &mut R, connection_state: &ConnectionState, role: &Role) -> io::Result<Self> 
+    where
+        Self: std::marker::Sized,
+        R: io::AsyncRead + Unpin + Send
+    ;
+}
+
+#[async_trait::async_trait]
+pub trait ConnectionStateLevelDeserialize {
+    async fn deserialize_read<R>(reader: &mut R, connection_state: &ConnectionState) -> io::Result<Self> 
+    where
+        Self: std::marker::Sized,
+        R: io::AsyncRead + Unpin + Send
+    ;
+}
+
 /// Encodes the currently supported protocol versions
 #[derive(Debug)]
 pub enum ProtocolVersion {

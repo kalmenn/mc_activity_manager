@@ -4,7 +4,7 @@ pub mod clientbound;
 pub use clientbound::ClientboundPacket;
 pub use serverbound::ServerboundPacket;
 
-use crate::mc_protocol::{ConnectionState, Role};
+use crate::mc_protocol::{self, ConnectionState, Role, ConnectionStateLevelDeserialize};
 
 use tokio::io;
 
@@ -14,8 +14,9 @@ pub enum V761Packet {
     ServerboundPacket(ServerboundPacket),
 }
 
-impl V761Packet {
-    pub async fn deserialize_read<R>(reader: &mut R, connection_state: &ConnectionState, role: &Role) -> io::Result<Self> 
+#[async_trait::async_trait]
+impl mc_protocol::RoleLevelDeserialize for V761Packet {
+    async fn deserialize_read<R>(reader: &mut R, connection_state: &ConnectionState, role: &Role) -> io::Result<Self> 
     where
         Self: std::marker::Sized,
         R: io::AsyncRead + Unpin + Send

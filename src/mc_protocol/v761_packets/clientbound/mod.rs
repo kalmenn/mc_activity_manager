@@ -4,7 +4,7 @@ pub use status::StatusPacket;
 mod login;
 pub use login::LoginPacket;
 
-use crate::mc_protocol::{ConnectionState, McProtocol};
+use crate::mc_protocol::{self, ConnectionState, McProtocol};
 
 use tokio::io;
 
@@ -14,8 +14,9 @@ pub enum ClientboundPacket {
     Login(LoginPacket)
 }
 
-impl ClientboundPacket {
-    pub async fn deserialize_read<R>(reader: &mut R, connection_state: &ConnectionState) -> io::Result<Self> 
+#[async_trait::async_trait]
+impl mc_protocol::ConnectionStateLevelDeserialize for ClientboundPacket {
+    async fn deserialize_read<R>(reader: &mut R, connection_state: &ConnectionState) -> io::Result<Self> 
     where
         Self: std::marker::Sized,
         R: io::AsyncRead + Unpin + Send

@@ -12,14 +12,16 @@ pub enum ServerboundPacket {
 }
 
 use crate::mc_protocol::{
+    self,
     ConnectionState,
     McProtocol,
     generic_packets::serverbound::HandshakePacket
 };
 use tokio::io;
 
-impl ServerboundPacket {
-    pub async fn deserialize_read<R>(reader: &mut R, connection_state: &ConnectionState) -> io::Result<Self> 
+#[async_trait::async_trait]
+impl mc_protocol::ConnectionStateLevelDeserialize for ServerboundPacket {
+    async fn deserialize_read<R>(reader: &mut R, connection_state: &ConnectionState) -> io::Result<Self> 
     where
         Self: std::marker::Sized,
         R: io::AsyncRead + Unpin + Send
