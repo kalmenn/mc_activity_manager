@@ -13,11 +13,20 @@ pub enum LoginPacket {
     }
 }
 
-#[derive(Debug)]
 pub struct SigData {
     timestamp: i64,
     public_key: Vec<u8>,
     signature: Vec<u8>,
+}
+
+impl std::fmt::Debug for SigData {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SigData")
+            .field("timestamp", &self.timestamp)
+            .field("public_key", &format!("{:x?}", self.public_key))
+            .field("signature", &format!("{:x?}", self.signature))
+            .finish()
+    }
 }
 
 #[async_trait::async_trait]
