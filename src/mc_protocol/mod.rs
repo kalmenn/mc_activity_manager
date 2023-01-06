@@ -1,5 +1,5 @@
 pub mod data_types;
-pub mod packets;
+pub mod packets_761;
 
 mod codec;
 pub use codec::Codec;
@@ -20,4 +20,10 @@ pub trait McProtocol {
         Self: std::marker::Sized,
         R: io::AsyncRead + Unpin + Send
     ;
+}
+
+/// Encodes the currently supported protocol versions
+pub enum ProtocolVersion {
+    V761,
+    V760,
 }

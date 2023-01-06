@@ -4,7 +4,7 @@ mod mc_protocol;
 use minecraft_server_runner::McServer;
 use mc_protocol::{
     Codec,
-    packets::{
+    packets_761::{
         serverbound::{self, ServerboundPacket},
         clientbound,
     },

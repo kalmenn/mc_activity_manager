@@ -4,11 +4,11 @@ use tokio::{
 };
 
 use crate::mc_protocol::{
+    data_types::McVarint,
     McProtocol,
-    data_types::McVarint
 };
 
-use super::packets::{
+use super::packets_761::{
     serverbound,
     ServerboundPacket,
     ClientboundPacket,
