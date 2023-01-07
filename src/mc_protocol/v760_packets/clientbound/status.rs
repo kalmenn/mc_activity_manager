@@ -20,7 +20,7 @@ impl crate::mc_protocol::McProtocol for StatusPacket {
             StatusPacket::StatusResponse { json_response } => {
                 writer.write_u8(0).await?;
                 // Not sure what the difference with write_all_buf() is
-                writer.write_all(json_response.as_bytes()).await?;
+                json_response.serialize_write(writer).await?;
             },
             StatusPacket::PingResponse { payload } => {
                 writer.write_u8(1).await?;

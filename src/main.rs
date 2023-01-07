@@ -89,6 +89,7 @@ async fn main() {
                                             status("Requested ping");
                                             codec.send_packet(clientbound::StatusPacket::PingResponse{ payload }).await?;
                                             status("Sent pong");
+                                            break io::Result::Ok(false)
                                         },
                                     }},
                                     ServerboundPacket::Login(packet) => {match packet {
