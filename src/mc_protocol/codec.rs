@@ -41,8 +41,8 @@ impl Codec {
             reader: BufReader::new(read_half),
             writer: BufWriter::new(write_half),
             connection_state: ConnectionState::Handshaking,
-            role: role,
-            protocol_version: protocol_version,
+            role,
+            protocol_version,
         })
     }
 

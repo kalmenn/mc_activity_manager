@@ -105,7 +105,7 @@ async fn main() {
                                 },
                                 other => break Err(io::Error::new(
                                     io::ErrorKind::InvalidData,
-                                    format!("unsupported protocol version: {:?}", Option::<ProtocolVersion>::from(other.get_protocol_version()))
+                                    format!("unsupported protocol version: {:?}", Option::<ProtocolVersion>::from(other))
                                 )),
                             }}
                         }.await {

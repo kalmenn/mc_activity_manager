@@ -107,12 +107,14 @@ impl Packet {
             ))
         }
     }
+}
 
-    pub fn get_protocol_version(&self) -> Option<ProtocolVersion> {
-        match self {
-            Self::V760(_) => Some(ProtocolVersion::V760),
-            Self::V761(_) => Some(ProtocolVersion::V761),
-            Self::Generic(_) => None
+impl From<Packet> for Option<ProtocolVersion> {
+    fn from(packet: Packet) -> Self {
+        match packet {
+            Packet::V760(_) => Some(ProtocolVersion::V760),
+            Packet::V761(_) => Some(ProtocolVersion::V761),
+            Packet::Generic(_) => None
         }
     }
 }
