@@ -1,7 +1,4 @@
-mod minecraft_server_runner;
 mod mc_protocol;
-
-use minecraft_server_runner::McServer;
 use mc_protocol::{
     Codec,
     Packet,
@@ -15,6 +12,7 @@ use tokio::{
     net::TcpListener,
     io,
     task,
+    process::Command,
 };
 
 #[tokio::main(flavor = "current_thread")]
@@ -154,19 +152,24 @@ async fn main() {
                     true // Start the server
                 }
             ){
-                break // We exit the loop whenever one of the branches returns true
+                // We exit the connection-handling loop whenever one of the branches returns true
+                // and switch to the next state in the main loop (running the server)
+                break 
             }}
         }
         {
-            let mut server = McServer::with_args(
-                "/bin/bash", 
-                &[
-                    "start.sh"
-                ]
-            ).unwrap();
+            println!("\n\x1b[38;2;0;200;0mStarting minecraft server as child process\x1b[0m\n");
 
-            let exit_status = server.wait_for_exit().await.unwrap();
-            println!("Server exited on status: {}", exit_status);
+            let mut server = Command::new("/bin/bash")
+                .args(["./start.sh"])
+                .spawn()
+                .expect("failed to start server in subprocess");
+
+            loop{tokio::select!(
+                exit_status = server.wait() => {
+                    break println!("Server exited on status: {:?}", exit_status);
+                }
+            )}
         }
     }
 }
