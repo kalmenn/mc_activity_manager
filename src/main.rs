@@ -46,10 +46,14 @@ async fn main() {
                         let mut codec = Codec::new_server(stream);
 
                         let output = async {loop {match codec.read_packet().await? {
-                            Packet::Generic(packet) => match packet {
-                                GenericPacket::Serverbound(generic_packets::serverbound::ServerboundPacket::Handshake(packet)) => {
+                            Packet::Generic(GenericPacket::Serverbound(packet)) => match packet {
+                                generic_packets::serverbound::ServerboundPacket::Handshake(packet) => {
                                     status(&format!("Switching state to: {}", packet.next_state));
                                 },
+                                generic_packets::serverbound::ServerboundPacket::ServerListPing(_) => {
+                                    status("Recieved legacy server list ping");
+                                    break Ok(false)
+                                }
                             }
                             Packet::V761(V761Packet::ServerboundPacket(packet)) => match packet {
                                 ServerboundPacket::Status(packet) => {match packet {

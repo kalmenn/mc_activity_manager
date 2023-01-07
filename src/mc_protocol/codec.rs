@@ -21,7 +21,11 @@ use crate::mc_protocol::{
     generic_packets::{
         self,
         GenericPacket,
-        serverbound::{HandshakePacket, NextState},
+        serverbound::{
+            HandshakePacket,
+            NextState,
+            server_list_ping::{is_packet_server_list_ping, ServerListPingPacket}
+        },
     },
 };
 
@@ -56,6 +60,20 @@ impl Codec {
     }
 
     pub async fn read_packet(&mut self) -> io::Result<Packet> {
+        if let ConnectionState::Handshaking = self.connection_state {
+            if is_packet_server_list_ping::<io::Result<bool>>(self.reader.get_mut()).await? {
+                return Ok(
+                    Packet::Generic(
+                        GenericPacket::Serverbound(
+                            generic_packets::serverbound::ServerboundPacket::ServerListPing(
+                                ServerListPingPacket::deserialize_read(&mut self.reader).await?
+                            )
+                        )
+                    )
+                )
+            }
+        };
+
         let packet_length: u64 = match i32::from(McVarint::deserialize_read(&mut self.reader).await?).try_into() {
             Ok(value) => value,
             Err(_) => return Err(io::Error::new(
