@@ -3,13 +3,19 @@ use mc_protocol::{
     Codec,
     Packet,
     v760_packets::*,
-    generic_packets::{self, GenericPacket},
+    generic_packets::{
+        self,
+        GenericPacket,
+        serverbound::{HandshakePacket, NextState},
+    },
     ProtocolVersion,
+    data_types::McVarint,
 };
 
 use std::{
     net::SocketAddr, 
     process::Stdio,
+    time::Duration,
 };
 use tokio::{
     net::TcpListener,
@@ -178,6 +184,33 @@ async fn main() {
                 exit_status = mc_server.wait() => {
                     drop(mc_stdin);
                     break println!("Minecraft server exited on status: {:?}", exit_status.expect(""));
+                },
+                _ = tokio::time::sleep(Duration::from_secs(10)) => {
+                    let mut codec = Codec::new_client("127.0.0.1:6969".parse().expect("this should be a valid socket")).await
+                        .expect("should have been able to conenct to the minecraft server");
+
+                    codec.send_packet(HandshakePacket{
+                        protocol_version: McVarint::from(760_i32),
+                        server_address: "127.0.0.1".to_owned(),
+                        server_port: 6969,
+                        next_state: NextState::Status,
+                    }).await.unwrap();
+
+                    codec.send_packet(serverbound::StatusPacket::StatusRequest{}).await.unwrap();
+
+                    if let Packet::V760(
+                        V760Packet::ClientboundPacket(
+                            ClientboundPacket::Status(
+                                clientbound::StatusPacket::StatusResponse{ json_response }
+                    ))) = codec.read_packet().await.expect("Should have been able to recieve a packet from minecraft server") { // BUG: This fails for now. Implementing a seperate client codec and reordering the Packet data structure is needed first.
+                        println!("server sent this status message:\n\n{}\n\n", json_response)
+                        // TODO: Deserialize json response and check the number of online players
+                    } else {
+                        println!("Warning! Server isn't responding in a valid way to status requests.")
+                    };
+
+                    // mc_stdin.write_all("stop\n".as_bytes()).await.unwrap();
+                    // mc_stdin.flush().await.unwrap();
                 },
                 _ = stdin_reader.read_line(&mut line_buffer) => {
                     mc_stdin.write_all(line_buffer.as_bytes()).await
