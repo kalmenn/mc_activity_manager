@@ -7,10 +7,13 @@ use mc_protocol::{
     ProtocolVersion,
 };
 
-use std::net::SocketAddr;
+use std::{
+    net::SocketAddr, 
+    process::Stdio,
+};
 use tokio::{
     net::TcpListener,
-    io,
+    io::{self, BufReader, AsyncBufReadExt, AsyncWriteExt},
     task,
     process::Command,
 };
@@ -177,23 +180,34 @@ async fn main() {
         {
             println!("\n\x1b[38;2;0;200;0mStarting minecraft server as child process\x1b[0m\n");
 
-            let mut server = Command::new("/bin/bash")
+            let mut mc_server = Command::new("/bin/bash")
                 .args(["./start.sh"])
+                .stdin(Stdio::piped())
                 .spawn()
                 .expect("failed to start server in subprocess");
+
+            let mut mc_stdin = mc_server.stdin.take().expect("should have been able to bind to minecraft server stdin");
+            let mut stdin_reader = BufReader::new(io::stdin());
+            let mut line_buffer = String::new();
 
             let mut sigint_reciever = sigint_reciever_holder.take()
                 .expect("sigint reciever should have been put back from the previous take");
 
             loop{tokio::select!(
-                exit_status = server.wait() => {
+                exit_status = mc_server.wait() => {
                     break println!("Server exited on status: {:?}", exit_status);
                 },
                 _ = sigint_reciever.recv() => {
                     println!("Stopping minecraft server");
-                    server.kill().await.expect("minecraft server should have been running");
+                    mc_server.kill().await.expect("minecraft server should have been running");
                     return
                 },
+                _ = stdin_reader.read_line(&mut line_buffer) => {
+                    mc_stdin.write_all(line_buffer.as_bytes()).await
+                        .expect("should have been able to forward input to minecraft server stdin");
+                    mc_stdin.flush().await
+                        .expect("should have been able to flush data sent to minecraft server stdin");
+                }
             )}
 
             sigint_reciever_holder = Some(sigint_reciever);
