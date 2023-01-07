@@ -95,29 +95,25 @@ impl Codec {
                 NextState::Login => ConnectionState::Login,
             };
 
-            Ok(Packet::Generic(GenericPacket::Serverbound(generic_packets::serverbound::ServerboundPacket::Handshake(packet))))
+            Packet::Generic(GenericPacket::Serverbound(generic_packets::serverbound::ServerboundPacket::Handshake(packet)))
         } else {
-            let packet = Packet::deserialize_read(
+            Packet::deserialize_read(
                 &mut packet_reader,
                 &self.connection_state,
                 &self.role,
                 &self.protocol_version
-            ).await?;
-
-            {
-                let remaining_bytes = packet_reader.limit();
-                if remaining_bytes != 0 {
-                    return Err(io::Error::new(
-                        io::ErrorKind::Other,
-                        format!("{remaining_bytes} bytes were not consumed by the implementation of deserialize_read")
-                    ))
-                }
-            }
-
-            Ok(packet)
+            ).await?
         };
 
-        packet
+        let remaining_bytes = packet_reader.limit();
+        if remaining_bytes != 0 {
+            return Err(io::Error::new(
+                io::ErrorKind::Other,
+                format!("{remaining_bytes} bytes were not consumed by the implementation of deserialize_read")
+            ))
+        }
+
+        Ok(packet)
     }
 
     pub async fn send_packet(&mut self, packet: impl McProtocol) -> io::Result<()> {
