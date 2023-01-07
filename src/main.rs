@@ -33,15 +33,15 @@ async fn main() {
             // We handle connections and loop until we recieve a Login request
             loop{if tokio::select!(
                 Ok((stream, address)) = listener.accept() => {
-                    let address = format!("\x1b[38;5;14m{}\x1b[0m", address);
-                    println!("Connection from {}", address);
-
                     let sender = sender.clone();
-
+                    
                     task::spawn(async move {
+                        let address = format!("\x1b[38;5;14m{}\x1b[0m", address);
+                        println!("Connection from {}", address);
+
                         match async {
                             let status = |message: &str| {
-                                println!("{} → {}", address, message);
+                                println!("{} → {}", &address, message);
                             };
 
                             let mut codec = Codec::new_server(stream)?;
