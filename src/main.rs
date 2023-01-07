@@ -20,21 +20,10 @@ use tokio::{
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() {
-    let (sigint_sender, sigint_reciever) = tokio::sync::mpsc::channel::<()>(1);
-    let mut sigint_reciever_holder = Some(sigint_reciever);
-
-    task::spawn(async move {
-        tokio::signal::ctrl_c().await.expect("should be able to bind to incoming SIGINT stream");
-        println!("\nCaught SIGINT event");
-        sigint_sender.send(()).await.expect("internal sigint channel shouldn't close");
-    });
-
     let socket: SocketAddr = "0.0.0.0:6969".parse().expect("this should be a valid socket");
+
     loop {
         {
-            let mut sigint_reciever = sigint_reciever_holder.take()
-                .expect("sigint reciever should have been put back from the previous take");
-
             let listener = TcpListener::bind(socket)
                 .await
                 .expect("Couldn't bind to TCP socket");
@@ -166,16 +155,11 @@ async fn main() {
 
                     true // Start the server
                 },
-                _ = sigint_reciever.recv() => {
-                    return println!("Exiting")
-                }
             ){
                 // We exit the connection-handling loop whenever one of the branches returns true
                 // and switch to the next state in the main loop (running the server)
                 break 
             }}
-
-            sigint_reciever_holder = Some(sigint_reciever);
         }
         {
             println!("\n\x1b[38;2;0;200;0mStarting minecraft server as child process\x1b[0m\n");
@@ -190,25 +174,10 @@ async fn main() {
             let mut stdin_reader = BufReader::new(io::stdin());
             let mut line_buffer = String::new();
 
-            let mut sigint_reciever = sigint_reciever_holder.take()
-                .expect("sigint reciever should have been put back from the previous take");
-
             loop{tokio::select!(
                 exit_status = mc_server.wait() => {
-                    break println!("Server exited on status: {:?}", exit_status);
-                },
-                _ = sigint_reciever.recv() => {
-                    // TODO: This doesn't seem to actually gracefully stop the minecraft server
-                    println!("Stopping minecraft server");
-                    mc_stdin.write_all("stop\n".as_bytes()).await
-                        .expect("should have been able to write to minecraft server stdin");
-                    mc_stdin.flush().await
-                        .expect("should have been able to flush minecraft server stdin");
-                    println!(
-                        "Minecraft Server exited with status: {}",
-                        mc_server.wait().await.expect("minecraft server should have been running")
-                    );
-                    return
+                    drop(mc_stdin);
+                    break println!("Minecraft server exited on status: {:?}", exit_status.expect(""));
                 },
                 _ = stdin_reader.read_line(&mut line_buffer) => {
                     mc_stdin.write_all(line_buffer.as_bytes()).await
@@ -219,8 +188,6 @@ async fn main() {
                 },
                 // TODO: query player count and stop server when nobody has been online for over 5 minutes.
             )}
-
-            sigint_reciever_holder = Some(sigint_reciever);
         }
     }
 }
