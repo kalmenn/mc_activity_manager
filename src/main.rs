@@ -12,7 +12,7 @@ use mc_protocol::{
 
 use std::net::SocketAddr;
 use tokio::{
-    net::{TcpListener},
+    net::TcpListener,
     io,
     task,
 };
@@ -34,88 +34,88 @@ async fn main() {
             loop{if tokio::select!(
                 Ok((stream, address)) = listener.accept() => {
                     let sender = sender.clone();
-                    
+
                     task::spawn(async move {
                         let address = format!("\x1b[38;5;14m{address}\x1b[0m");
                         println!("Connection from {}", address);
 
-                        match async {
-                            let status = |message: &str| {
-                                println!("{} → {}", &address, message);
-                            };
+                        let status = |message: &str| {
+                            println!("{} → {}", &address, message);
+                        };
 
-                            let mut codec = Codec::new_server(stream)?;
+                        let mut codec = Codec::new_server(stream);
 
-                            loop {match codec.read_packet().await? {
-                                Packet::Generic(packet) => match packet {
-                                    GenericPacket::Serverbound(generic_packets::serverbound::ServerboundPacket::Handshake(packet)) => {
-                                        status(&format!("Switching state to: {}", packet.next_state));
-                                    },
-                                }
-                                Packet::V761(V761Packet::ServerboundPacket(packet)) => match packet {
-                                    ServerboundPacket::Status(packet) => {match packet {
-                                        serverbound::StatusPacket::StatusRequest{} => {
-                                            status("Requested status");
-                                            let json_response = serde_json::json!({
-                                                "description": [
-                                                    {
-                                                        "text": "Hors Ligne ...\n",
-                                                        "color": "gold"
-                                                    },
-                                                    {
-                                                        "text": "Connectez vous pour démarrer le serveur",
-                                                        "color": "dark_green"
-                                                    }
-                                                ],
-                                                "players": {
-                                                    "max": 0,
-                                                    "online": 1,
-                                                    "sample": [
-                                                        {
-                                                            "name": "J'ai pas hacké je jure",
-                                                            "id": "4566e69f-c907-48ee-8d71-d7ba5aa00d20"
-                                                        }
-                                                    ]
-                                                },
-                                                "version": {
-                                                    "name": "1.19.3",
-                                                    "protocol": 761
-                                                }
-                                            }).to_string();
-                                            codec.send_packet(clientbound::StatusPacket::StatusResponse{ json_response }).await?;
-                                            status("Sent status");
-                                        },
-                                        serverbound::StatusPacket::PingRequest{ payload } => {
-                                            status("Requested ping");
-                                            codec.send_packet(clientbound::StatusPacket::PingResponse{ payload }).await?;
-                                            status("Sent pong");
-                                            break io::Result::Ok(false)
-                                        },
-                                    }},
-                                    ServerboundPacket::Login(packet) => {match packet {
-                                        serverbound::LoginPacket::LoginStart { name, player_uuid } => {
-                                            status(&format!(
-                                                "Recieved login request from \x1b[38;5;14m{name}\x1b[0m{}",
-                                                if let Some(uuid) = player_uuid {
-                                                    format!(" with uuid: \x1b[38;5;14m{uuid:x}\x1b[0m")
-                                                } else {
-                                                    "".to_owned()
-                                                }
-                                            ));
-                                            break io::Result::Ok(true)
-                                        },
-                                    }},
-                                    other => break Err(io::Error::new(
-                                        io::ErrorKind::Other,
-                                        format!("got an unsupported packet: {other:?}")
-                                    ))
+                        let output = async {loop {match codec.read_packet().await? {
+                            Packet::Generic(packet) => match packet {
+                                GenericPacket::Serverbound(generic_packets::serverbound::ServerboundPacket::Handshake(packet)) => {
+                                    status(&format!("Switching state to: {}", packet.next_state));
                                 },
+                            }
+                            Packet::V761(V761Packet::ServerboundPacket(packet)) => match packet {
+                                ServerboundPacket::Status(packet) => {match packet {
+                                    serverbound::StatusPacket::StatusRequest{} => {
+                                        status("Requested status");
+                                        let json_response = serde_json::json!({
+                                            "description": [
+                                                {
+                                                    "text": "Hors Ligne ...\n",
+                                                    "color": "gold"
+                                                },
+                                                {
+                                                    "text": "Connectez vous pour démarrer le serveur",
+                                                    "color": "dark_green"
+                                                }
+                                            ],
+                                            "players": {
+                                                "max": 0,
+                                                "online": 1,
+                                                "sample": [
+                                                    {
+                                                        "name": "J'ai pas hacké je jure",
+                                                        "id": "4566e69f-c907-48ee-8d71-d7ba5aa00d20"
+                                                    }
+                                                ]
+                                            },
+                                            "version": {
+                                                "name": "1.19.3",
+                                                "protocol": 761
+                                            }
+                                        }).to_string();
+                                        codec.send_packet(clientbound::StatusPacket::StatusResponse{ json_response }).await?;
+                                        status("Sent status");
+                                    },
+                                    serverbound::StatusPacket::PingRequest{ payload } => {
+                                        status("Requested ping");
+                                        codec.send_packet(clientbound::StatusPacket::PingResponse{ payload }).await?;
+                                        status("Sent pong");
+                                        break io::Result::Ok(false)
+                                    },
+                                }},
+                                ServerboundPacket::Login(packet) => {match packet {
+                                    serverbound::LoginPacket::LoginStart { name, player_uuid } => {
+                                        status(&format!(
+                                            "Recieved login request from \x1b[38;5;14m{name}\x1b[0m{}",
+                                            if let Some(uuid) = player_uuid {
+                                                format!(" with uuid: \x1b[38;5;14m{uuid:x}\x1b[0m")
+                                            } else {
+                                                "".to_owned()
+                                            }
+                                        ));
+                                        break io::Result::Ok(true)
+                                    },
+                                }},
                                 other => break Err(io::Error::new(
-                                    io::ErrorKind::InvalidData,
-                                    format!("unsupported protocol version: {:?}", Option::<ProtocolVersion>::from(other))
-                                )),
-                            }}
-                        }.await {
+                                    io::ErrorKind::Other,
+                                    format!("got an unsupported packet: {other:?}")
+                                ))
+                            },
+                            other => break Err(io::Error::new(
+                                io::ErrorKind::InvalidData,
+                                format!("unsupported protocol version: {}", Option::<ProtocolVersion>::from(other).expect("we already matched against generic packets"))
+                            )),
+                        }}}.await;
+
+                        match output {
                             Ok(should_we_start) => {
                                 println!("Closed connection to {address}");
                                 if should_we_start {
@@ -125,16 +125,20 @@ async fn main() {
                             Err(err) => {
                                 println!("Killed connection to {address} on error: {err}");
                             }
-                        }
+                        };
                     });
+
                     false // Don't start the server
                 },
                 _ = reciever.recv() => {
                     // There should always be at least one sender alive.
                     // But just in case, we return anyway if we recieve None
+
                     true // Start the server
                 }
-            ){break}}
+            ){
+                break // We exit the loop whenever one of the branches returns true
+            }}
         }
         {
             let mut server = McServer::with_args(

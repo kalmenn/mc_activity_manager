@@ -35,24 +35,24 @@ pub struct Codec {
 
 impl Codec {
     /// Handles a connection from a given TcpStream
-    fn with_version_and_role(stream: TcpStream, protocol_version: Option<ProtocolVersion>, role: Role) -> io::Result<Self> {
+    fn with_version_and_role(stream: TcpStream, protocol_version: Option<ProtocolVersion>, role: Role) -> Self {
         let (read_half, write_half) = stream.into_split();
-        Ok(Codec { 
+        Codec { 
             reader: BufReader::new(read_half),
             writer: BufWriter::new(write_half),
             connection_state: ConnectionState::Handshaking,
             role,
             protocol_version,
-        })
+        }
     }
 
-    pub fn new_server(stream: TcpStream) -> io::Result<Self> {
+    pub fn new_server(stream: TcpStream) -> Self {
         Self::with_version_and_role(stream, None, Role::Server)
     }
 
     pub async fn new_client(server_addr: SocketAddr) -> io::Result<Self> {
         let stream = TcpStream::connect(server_addr).await?;
-        Self::with_version_and_role(stream, None, Role::Server)
+        Ok(Self::with_version_and_role(stream, None, Role::Server))
     }
 
     pub async fn read_packet(&mut self) -> io::Result<Packet> {

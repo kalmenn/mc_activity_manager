@@ -7,6 +7,7 @@ mod codec;
 pub use codec::Codec;
 
 use tokio::io;
+use std::fmt::{Display, Debug};
 use std::marker::{Unpin, Send};
 
 /// Something is McProtocol if it can serialize / deserialize itself
@@ -61,6 +62,12 @@ impl TryFrom<i32> for ProtocolVersion {
                 format!("protocol version {other} not supported")
             )),
         }
+    }
+}
+
+impl Display for ProtocolVersion {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        Debug::fmt(&self, f)
     }
 }
 
