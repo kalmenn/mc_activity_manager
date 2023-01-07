@@ -1,5 +1,5 @@
 use tokio::{
-    io::{self, AsyncReadExt},
+    io::{self, AsyncReadExt, AsyncWriteExt},
     net::tcp::OwnedReadHalf,
 };
 use crate::mc_protocol::McProtocol;
@@ -37,7 +37,37 @@ impl McProtocol for ServerListPingPacket {
     where
         W: io::AsyncWrite + Unpin + Send
     {
-        todo!()
+        writer.write_all(&STATIC_HEADER).await?;
+
+        writer.write_i16(match self.server_address.len().try_into() {
+            Ok(length) => length,
+            Err(_) => return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "server address length was outside i16 bounds"
+            ))
+        }).await?;
+
+        writer.write_u8(self.protocol_version).await?;
+
+        writer.write_i16(match self.server_address.chars().count().try_into() {
+            Ok(length) => length,
+            Err(_) => return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "server address length in characters was outside i16 bounds"
+            ))
+        }).await?;
+
+        let mut server_address_bytes = Vec::<u8>::new();
+        self.server_address.encode_utf16()
+            .for_each(|byte_pair| {
+                server_address_bytes.push((byte_pair >> 8) as u8);
+                server_address_bytes.push(byte_pair as u8);
+            });
+        writer.write_all(server_address_bytes.as_slice()).await?;
+
+        writer.write_i32(self.server_port).await?;
+
+        Ok(())
     }
     async fn deserialize_read<R>(reader: &mut R) -> io::Result<Self> 
     where
