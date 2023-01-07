@@ -2,7 +2,7 @@ mod mc_protocol;
 use mc_protocol::{
     Codec,
     Packet,
-    v761_packets::*,
+    v760_packets::*,
     generic_packets::{self, GenericPacket},
     ProtocolVersion,
 };
@@ -68,7 +68,7 @@ async fn main() {
                                     break Ok(false)
                                 }
                             }
-                            Packet::V761(V761Packet::ServerboundPacket(packet)) => match packet {
+                            Packet::V760(V760Packet::ServerboundPacket(packet)) => match packet {
                                 ServerboundPacket::Status(packet) => {match packet {
                                     serverbound::StatusPacket::StatusRequest{} => {
                                         status("Requested status");
@@ -94,8 +94,8 @@ async fn main() {
                                                 ]
                                             },
                                             "version": {
-                                                "name": "1.19.3",
-                                                "protocol": 761
+                                                "name": "1.19.2",
+                                                "protocol": 760
                                             }
                                         }).to_string();
                                         codec.send_packet(clientbound::StatusPacket::StatusResponse{ json_response }).await?;
@@ -109,7 +109,7 @@ async fn main() {
                                     },
                                 }},
                                 ServerboundPacket::Login(packet) => {match packet {
-                                    serverbound::LoginPacket::LoginStart { name, player_uuid } => {
+                                    serverbound::LoginPacket::LoginStart { name, sig_data: _, player_uuid } => {
                                         status(&format!(
                                             "Recieved login request from \x1b[38;5;14m{name}\x1b[0m{}",
                                             if let Some(uuid) = player_uuid {
