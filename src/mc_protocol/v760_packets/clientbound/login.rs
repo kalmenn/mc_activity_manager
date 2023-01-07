@@ -14,7 +14,10 @@ impl crate::mc_protocol::McProtocol for LoginPacket {
         W: io::AsyncWrite + Unpin + Send
     {
         match self {
-            Self::Disconnect{ reason } => writer.write_all(reason.as_bytes()).await?,
+            Self::Disconnect{ reason } => {
+                writer.write_u8(0).await?;
+                reason.serialize_write(writer).await?
+            },
         }
         Ok(())
     }

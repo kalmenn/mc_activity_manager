@@ -58,8 +58,8 @@ async fn main() {
                                         let json_response = serde_json::json!({
                                             "description": [
                                                 {
-                                                    "text": "Hors Ligne ...\n",
-                                                    "color": "gold"
+                                                    "text": "Hors Ligne\n",
+                                                    "color": "dark_red"
                                                 },
                                                 {
                                                     "text": "Connectez vous pour démarrer le serveur",
@@ -101,6 +101,19 @@ async fn main() {
                                                 "".to_owned()
                                             }
                                         ));
+                                        codec.send_packet(clientbound::LoginPacket::Disconnect { reason: serde_json::json!(
+                                            [
+                                                {
+                                                    "text": "Serveur Hors Ligne\n\n",
+                                                    "color": "red"
+                                                },
+                                                {
+                                                    "text": "Demande de démarrage reçue,\nle serveur devrait être disponible d'ici une minute",
+                                                    "color": "white"
+                                                }
+                                            ]
+                                        ).to_string()}).await?;
+                                        status("Sent disconnect message");
                                         break io::Result::Ok(true)
                                     },
                                 }},
