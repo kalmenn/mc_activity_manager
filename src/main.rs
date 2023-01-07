@@ -198,16 +198,26 @@ async fn main() {
                     break println!("Server exited on status: {:?}", exit_status);
                 },
                 _ = sigint_reciever.recv() => {
+                    // TODO: This doesn't seem to actually gracefully stop the minecraft server
                     println!("Stopping minecraft server");
-                    mc_server.kill().await.expect("minecraft server should have been running");
+                    mc_stdin.write_all("stop\n".as_bytes()).await
+                        .expect("should have been able to write to minecraft server stdin");
+                    mc_stdin.flush().await
+                        .expect("should have been able to flush minecraft server stdin");
+                    println!(
+                        "Minecraft Server exited with status: {}",
+                        mc_server.wait().await.expect("minecraft server should have been running")
+                    );
                     return
                 },
                 _ = stdin_reader.read_line(&mut line_buffer) => {
                     mc_stdin.write_all(line_buffer.as_bytes()).await
                         .expect("should have been able to forward input to minecraft server stdin");
                     mc_stdin.flush().await
-                        .expect("should have been able to flush data sent to minecraft server stdin");
-                }
+                        .expect("should have been able to flush minecraft server stdin");
+                    line_buffer.clear();
+                },
+                // TODO: query player count and stop server when nobody has been online for over 5 minutes.
             )}
 
             sigint_reciever_holder = Some(sigint_reciever);
