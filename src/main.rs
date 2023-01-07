@@ -17,21 +17,33 @@ use tokio::{
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() {
+    let (sigint_sender, sigint_reciever) = tokio::sync::mpsc::channel::<()>(1);
+    let mut sigint_reciever_holder = Some(sigint_reciever);
+
+    task::spawn(async move {
+        tokio::signal::ctrl_c().await.expect("should be able to bind to incoming SIGINT stream");
+        println!("\nCaught SIGINT event");
+        sigint_sender.send(()).await.expect("internal sigint channel shouldn't close");
+    });
+
     let socket: SocketAddr = "0.0.0.0:6969".parse().expect("this should be a valid socket");
     loop {
         {
+            let mut sigint_reciever = sigint_reciever_holder.take()
+                .expect("sigint reciever should have been put back from the previous take");
+
             let listener = TcpListener::bind(socket)
                 .await
                 .expect("Couldn't bind to TCP socket");
 
             println!("\n\x1b[38;2;0;200;0mSpoofer listening on port {}\x1b[0m\n", socket.port());
 
-            let (sender, mut reciever) = tokio::sync::mpsc::channel::<()>(1);
+            let (start_sender, mut start_reciever) = tokio::sync::mpsc::channel::<()>(1);
 
             // We handle connections and loop until we recieve a Login request
             loop{if tokio::select!(
                 Ok((stream, address)) = listener.accept() => {
-                    let sender = sender.clone();
+                    let start_sender = start_sender.clone();
 
                     task::spawn(async move {
                         let address = format!("\x1b[38;5;14m{address}\x1b[0m");
@@ -134,7 +146,7 @@ async fn main() {
                             Ok(should_we_start) => {
                                 println!("Closed connection to {address}");
                                 if should_we_start {
-                                    sender.send(()).await.expect("channel shouldn't close");
+                                    start_sender.send(()).await.expect("channel shouldn't close");
                                 }
                             },
                             Err(err) => {
@@ -145,17 +157,22 @@ async fn main() {
 
                     false // Don't start the server
                 },
-                _ = reciever.recv() => {
+                _ = start_reciever.recv() => {
                     // There should always be at least one sender alive.
                     // But just in case, we return anyway if we recieve None
 
                     true // Start the server
+                },
+                _ = sigint_reciever.recv() => {
+                    return println!("Exiting")
                 }
             ){
                 // We exit the connection-handling loop whenever one of the branches returns true
                 // and switch to the next state in the main loop (running the server)
                 break 
             }}
+
+            sigint_reciever_holder = Some(sigint_reciever);
         }
         {
             println!("\n\x1b[38;2;0;200;0mStarting minecraft server as child process\x1b[0m\n");
@@ -165,11 +182,21 @@ async fn main() {
                 .spawn()
                 .expect("failed to start server in subprocess");
 
+            let mut sigint_reciever = sigint_reciever_holder.take()
+                .expect("sigint reciever should have been put back from the previous take");
+
             loop{tokio::select!(
                 exit_status = server.wait() => {
                     break println!("Server exited on status: {:?}", exit_status);
-                }
+                },
+                _ = sigint_reciever.recv() => {
+                    println!("Stopping minecraft server");
+                    server.kill().await.expect("minecraft server should have been running");
+                    return
+                },
             )}
+
+            sigint_reciever_holder = Some(sigint_reciever);
         }
     }
 }
