@@ -78,8 +78,8 @@ async fn main() {
                                                     ]
                                                 },
                                                 "version": {
-                                                    "name": "1.19.2",
-                                                    "protocol": 760
+                                                    "name": "1.19.3",
+                                                    "protocol": 761
                                                 }
                                             }).to_string();
                                             codec.send_packet(clientbound::StatusPacket::StatusResponse{ json_response }).await?;
