@@ -36,7 +36,7 @@ async fn main() {
                     let sender = sender.clone();
                     
                     task::spawn(async move {
-                        let address = format!("\x1b[38;5;14m{}\x1b[0m", address);
+                        let address = format!("\x1b[38;5;14m{address}\x1b[0m");
                         println!("Connection from {}", address);
 
                         match async {
@@ -94,7 +94,14 @@ async fn main() {
                                     }},
                                     ServerboundPacket::Login(packet) => {match packet {
                                         serverbound::LoginPacket::LoginStart { name, player_uuid } => {
-                                            status(&format!("recieved login request from {name} with uuid: {player_uuid:?}"));
+                                            status(&format!(
+                                                "Recieved login request from \x1b[38;5;14m{name}\x1b[0m{}",
+                                                if let Some(uuid) = player_uuid {
+                                                    format!(" with uuid: \x1b[38;5;14m{uuid:x}\x1b[0m")
+                                                } else {
+                                                    "".to_owned()
+                                                }
+                                            ));
                                             break io::Result::Ok(true)
                                         },
                                     }},
