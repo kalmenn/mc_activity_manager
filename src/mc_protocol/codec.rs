@@ -12,7 +12,7 @@ use tokio::{
 };
 
 use crate::mc_protocol::{
-    data_types::McVarint,
+    data_types::{McVarint, LengthPrefixed},
     McProtocol,
     ProtocolVersion,
     Role,
@@ -121,24 +121,12 @@ impl Codec {
     }
 
     pub async fn send_packet(&mut self, packet: impl McProtocol) -> io::Result<()> {
-        let packet_body = {
+        LengthPrefixed::from({
             let mut writer = BufWriter::new(Vec::<u8>::new());
             packet.serialize_write(&mut writer).await?;
             writer.flush().await?;
             writer.into_inner()
-        };
-
-        McVarint::from(
-            match i32::try_from(packet_body.len()) {
-                Ok(value) => value,
-                Err(_) => return Err(io::Error::new(
-                    io::ErrorKind::InvalidInput,
-                    "packet was longer than allowed"
-                )),
-            }
-        ).serialize_write(&mut self.writer).await?;
-
-        self.writer.write_all(packet_body.as_slice()).await?;
+        }).serialize_write(&mut self.writer).await?;
 
         self.writer.flush().await
     }
