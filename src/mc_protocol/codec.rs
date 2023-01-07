@@ -64,8 +64,6 @@ impl Codec {
             )),
         };
 
-        dbg!(&packet_length);
-
         // This will only read a single packet
         let mut packet_reader = self.reader.borrow_mut().take(packet_length);
 
@@ -79,7 +77,7 @@ impl Codec {
                 NextState::Login => ConnectionState::Login,
             };
 
-            Ok(dbg!(Packet::Generic(GenericPacket::Serverbound(generic_packets::serverbound::ServerboundPacket::Handshake(packet)))))
+            Ok(Packet::Generic(GenericPacket::Serverbound(generic_packets::serverbound::ServerboundPacket::Handshake(packet))))
         } else {
             let packet = Packet::deserialize_read(
                 &mut packet_reader,
@@ -87,8 +85,6 @@ impl Codec {
                 &self.role,
                 &self.protocol_version
             ).await?;
-
-            dbg!(&packet);
 
             {
                 let remaining_bytes = packet_reader.limit();
