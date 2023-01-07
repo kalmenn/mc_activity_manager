@@ -5,7 +5,7 @@ mod login;
 pub use login::LoginPacket;
 
 #[derive(Debug)]
-pub enum ServerboundPacket {
+pub enum V760 {
     Handshake(HandshakePacket),
     Status(StatusPacket),
     Login(LoginPacket),
@@ -15,13 +15,13 @@ use crate::mc_protocol::{
     self,
     ConnectionState,
     McProtocol,
-    generic_packets::serverbound::HandshakePacket
+    serverbound_packets::generic_packets::HandshakePacket
 };
 use tokio::io;
 
 #[async_trait::async_trait]
-impl mc_protocol::ConnectionStateLevelDeserialize for ServerboundPacket {
-    async fn deserialize_read<R>(reader: &mut R, connection_state: &ConnectionState) -> io::Result<Self> 
+impl mc_protocol::ConnectionStateLevelDeserialize for V760 {
+    async fn deserialize_read<R>(reader: &mut R, connection_state: ConnectionState) -> io::Result<Self> 
     where
         Self: std::marker::Sized,
         R: io::AsyncRead + Unpin + Send

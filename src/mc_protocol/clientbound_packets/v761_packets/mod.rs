@@ -8,15 +8,16 @@ use crate::mc_protocol::{self, ConnectionState, McProtocol};
 
 use tokio::io;
 
+/// A minecraft server packet for protocol version 761 sent from a server to a client
 #[derive(Debug)]
-pub enum ClientboundPacket {
+pub enum V761 {
     Status(StatusPacket),
     Login(LoginPacket)
 }
 
 #[async_trait::async_trait]
-impl mc_protocol::ConnectionStateLevelDeserialize for ClientboundPacket {
-    async fn deserialize_read<R>(reader: &mut R, connection_state: &ConnectionState) -> io::Result<Self> 
+impl mc_protocol::ConnectionStateLevelDeserialize for V761 {
+    async fn deserialize_read<R>(reader: &mut R, connection_state: ConnectionState) -> io::Result<Self> 
     where
         Self: std::marker::Sized,
         R: io::AsyncRead + Unpin + Send

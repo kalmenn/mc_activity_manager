@@ -1,15 +1,9 @@
 mod mc_protocol;
 use mc_protocol::{
-    Codec,
-    Packet,
-    v760_packets::*,
-    generic_packets::{
-        self,
-        GenericPacket,
-        serverbound::{HandshakePacket, NextState},
-    },
+    ServerCodec,
     ProtocolVersion,
-    data_types::McVarint,
+    serverbound_packets::{self, Serverbound},
+    clientbound_packets,
 };
 
 use std::{
@@ -51,21 +45,21 @@ async fn main() {
                             println!("{} → {}", &address, message);
                         };
 
-                        let mut codec = Codec::new_server(stream);
+                        let mut codec = ServerCodec::new(stream);
 
                         let output = async {loop {match codec.read_packet().await? {
-                            Packet::Generic(GenericPacket::Serverbound(packet)) => match packet {
-                                generic_packets::serverbound::ServerboundPacket::Handshake(packet) => {
+                            Serverbound::Generic(packet) => match packet {
+                                serverbound_packets::generic_packets::Generic::Handshake(packet) => {
                                     status(&format!("Switching state to: {}", packet.next_state));
                                 },
-                                generic_packets::serverbound::ServerboundPacket::ServerListPing(_) => {
+                                serverbound_packets::generic_packets::Generic::ServerListPing(_) => {
                                     status("Recieved legacy server list ping");
                                     break Ok(false)
                                 }
-                            }
-                            Packet::V760(V760Packet::ServerboundPacket(packet)) => match packet {
-                                ServerboundPacket::Status(packet) => {match packet {
-                                    serverbound::StatusPacket::StatusRequest{} => {
+                            },
+                            Serverbound::V760(packet) => match packet {
+                                serverbound_packets::v760_packets::V760::Status(packet) => {match packet {
+                                    serverbound_packets::v761_packets::StatusPacket::StatusRequest{} => {
                                         status("Requested status");
                                         let json_response = serde_json::json!({
                                             "description": [
@@ -93,18 +87,18 @@ async fn main() {
                                                 "protocol": 760
                                             }
                                         }).to_string();
-                                        codec.send_packet(clientbound::StatusPacket::StatusResponse{ json_response }).await?;
+                                        codec.send_packet(clientbound_packets::v760_packets::StatusPacket::StatusResponse{ json_response }).await?;
                                         status("Sent status");
                                     },
-                                    serverbound::StatusPacket::PingRequest{ payload } => {
+                                    serverbound_packets::v761_packets::StatusPacket::PingRequest{ payload } => {
                                         status("Requested ping");
-                                        codec.send_packet(clientbound::StatusPacket::PingResponse{ payload }).await?;
+                                        codec.send_packet(clientbound_packets::v760_packets::StatusPacket::PingResponse{ payload }).await?;
                                         status("Sent pong");
                                         break io::Result::Ok(false)
                                     },
                                 }},
-                                ServerboundPacket::Login(packet) => {match packet {
-                                    serverbound::LoginPacket::LoginStart { name, sig_data: _, player_uuid } => {
+                                serverbound_packets::v760_packets::V760::Login(packet) => {match packet {
+                                    serverbound_packets::v760_packets::LoginPacket::LoginStart { name, sig_data: _, player_uuid } => {
                                         status(&format!(
                                             "Recieved login request from \x1b[38;5;14m{name}\x1b[0m{}",
                                             if let Some(uuid) = player_uuid {
@@ -113,7 +107,7 @@ async fn main() {
                                                 "".to_owned()
                                             }
                                         ));
-                                        codec.send_packet(clientbound::LoginPacket::Disconnect { reason: serde_json::json!(
+                                        codec.send_packet(clientbound_packets::v760_packets::LoginPacket::Disconnect { reason: serde_json::json!(
                                             [
                                                 {
                                                     "text": "Serveur Hors Ligne\n\n",
@@ -186,28 +180,28 @@ async fn main() {
                     break println!("Minecraft server exited on status: {:?}", exit_status.expect(""));
                 },
                 _ = tokio::time::sleep(Duration::from_secs(10)) => {
-                    let mut codec = Codec::new_client("127.0.0.1:6969".parse().expect("this should be a valid socket")).await
-                        .expect("should have been able to conenct to the minecraft server");
+                    // let mut codec = ServerCodec::new_client("127.0.0.1:6969".parse().expect("this should be a valid socket")).await
+                    //     .expect("should have been able to conenct to the minecraft server");
 
-                    codec.send_packet(HandshakePacket{
-                        protocol_version: McVarint::from(760_i32),
-                        server_address: "127.0.0.1".to_owned(),
-                        server_port: 6969,
-                        next_state: NextState::Status,
-                    }).await.unwrap();
+                    // codec.send_packet(HandshakePacket{
+                    //     protocol_version: McVarint::from(760_i32),
+                    //     server_address: "127.0.0.1".to_owned(),
+                    //     server_port: 6969,
+                    //     next_state: NextState::Status,
+                    // }).await.unwrap();
 
-                    codec.send_packet(serverbound::StatusPacket::StatusRequest{}).await.unwrap();
+                    // codec.send_packet(serverbound::StatusPacket::StatusRequest{}).await.unwrap();
 
-                    if let Packet::V760(
-                        V760Packet::ClientboundPacket(
-                            ClientboundPacket::Status(
-                                clientbound::StatusPacket::StatusResponse{ json_response }
-                    ))) = codec.read_packet().await.expect("Should have been able to recieve a packet from minecraft server") { // BUG: This fails for now. Implementing a seperate client codec and reordering the Packet data structure is needed first.
-                        println!("server sent this status message:\n\n{}\n\n", json_response)
-                        // TODO: Deserialize json response and check the number of online players
-                    } else {
-                        println!("Warning! Server isn't responding in a valid way to status requests.")
-                    };
+                    // if let Packet::V760(
+                    //     V760Packet::ClientboundPacket(
+                    //         ClientboundPacket::Status(
+                    //             clientbound::StatusPacket::StatusResponse{ json_response }
+                    // ))) = codec.read_packet().await.expect("Should have been able to recieve a packet from minecraft server") { // BUG: This fails for now. Implementing a seperate client codec and reordering the Packet data structure is needed first.
+                    //     println!("server sent this status message:\n\n{}\n\n", json_response)
+                    //     // TODO: Deserialize json response and check the number of online players
+                    // } else {
+                    //     println!("Warning! Server isn't responding in a valid way to status requests.")
+                    // };
 
                     // mc_stdin.write_all("stop\n".as_bytes()).await.unwrap();
                     // mc_stdin.flush().await.unwrap();

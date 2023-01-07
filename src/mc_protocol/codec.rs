@@ -1,7 +1,4 @@
-use std::{
-    net::SocketAddr,
-    borrow::BorrowMut
-};
+use std::borrow::BorrowMut;
 
 use tokio::{
     net::{
@@ -15,64 +12,41 @@ use crate::mc_protocol::{
     data_types::{McVarint, LengthPrefixed},
     McProtocol,
     ProtocolVersion,
-    Role,
     ConnectionState,
-    Packet, 
-    generic_packets::{
+    ProtocolVersionLevelDeserialize,
+    serverbound_packets::{
         self,
-        GenericPacket,
-        serverbound::{
-            HandshakePacket,
-            NextState,
-            server_list_ping::{is_packet_server_list_ping, ServerListPingPacket}
-        },
+        Serverbound,
+        generic_packets::{is_packet_server_list_ping, NextState},
     },
 };
 
-pub struct Codec {
+pub struct ServerCodec {
     reader: BufReader<OwnedReadHalf>,
     writer: BufWriter<OwnedWriteHalf>,
     connection_state: ConnectionState,
-    role: Role,
     protocol_version: Option<ProtocolVersion>,
 }
 
-impl Codec {
-    /// Handles a connection from a given TcpStream
-    fn with_version_and_role(stream: TcpStream, protocol_version: Option<ProtocolVersion>, role: Role) -> Self {
+impl ServerCodec {
+    pub fn new(stream: TcpStream) -> Self {
         let (read_half, write_half) = stream.into_split();
-        Codec { 
+        ServerCodec { 
             reader: BufReader::new(read_half),
             writer: BufWriter::new(write_half),
             connection_state: ConnectionState::Handshaking,
-            role,
-            protocol_version,
+            protocol_version: None,
         }
     }
 
-    pub fn new_server(stream: TcpStream) -> Self {
-        Self::with_version_and_role(stream, None, Role::Server)
-    }
-
-    pub async fn new_client(server_addr: SocketAddr) -> io::Result<Self> {
-        let stream = TcpStream::connect(server_addr).await?;
-        Ok(Self::with_version_and_role(stream, None, Role::Server))
-    }
-
-    pub async fn read_packet(&mut self) -> io::Result<Packet> {
+    pub async fn read_packet(&mut self) -> io::Result<Serverbound> {
         if let ConnectionState::Handshaking = self.connection_state {
             if is_packet_server_list_ping::<io::Result<bool>>(self.reader.get_mut()).await? {
                 return Ok(
-                    Packet::Generic(
-                        GenericPacket::Serverbound(
-                            generic_packets::serverbound::ServerboundPacket::ServerListPing(
-                                ServerListPingPacket::deserialize_read(&mut self.reader).await?
-                            )
-                        )
-                    )
-                )
-            }
-        };
+                    Serverbound::Generic(
+                        serverbound_packets::generic_packets::Generic::ServerListPing(
+                            serverbound_packets::generic_packets::ServerListPingPacket::deserialize_read(&mut self.reader).await?
+        )))}};
 
         let packet_length: u64 = match i32::from(McVarint::deserialize_read(&mut self.reader).await?).try_into() {
             Ok(value) => value,
@@ -86,7 +60,7 @@ impl Codec {
         let mut packet_reader = self.reader.borrow_mut().take(packet_length);
 
         let packet = if let ConnectionState::Handshaking = self.connection_state {
-            let packet = HandshakePacket::deserialize_read(&mut packet_reader).await?;
+            let packet = serverbound_packets::generic_packets::HandshakePacket::deserialize_read(&mut packet_reader).await?;
 
             self.protocol_version = Some(i32::from(packet.protocol_version.clone()).try_into()?);
 
@@ -95,13 +69,12 @@ impl Codec {
                 NextState::Login => ConnectionState::Login,
             };
 
-            Packet::Generic(GenericPacket::Serverbound(generic_packets::serverbound::ServerboundPacket::Handshake(packet)))
+            Serverbound::Generic(serverbound_packets::generic_packets::Generic::Handshake(packet))
         } else {
-            Packet::deserialize_read(
+            Serverbound::deserialize_read(
                 &mut packet_reader,
-                &self.connection_state,
-                &self.role,
-                &self.protocol_version
+                self.connection_state,
+                self.protocol_version.expect("protocol version should be known by this point")
             ).await?
         };
 

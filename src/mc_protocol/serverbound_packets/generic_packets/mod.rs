@@ -1,11 +1,11 @@
-pub mod handshake;
+mod handshake;
 pub use handshake::{HandshakePacket, NextState};
 
-pub mod server_list_ping;
-pub use server_list_ping::ServerListPingPacket;
+mod server_list_ping;
+pub use server_list_ping::{ServerListPingPacket, is_packet_server_list_ping};
 
 #[derive(Debug)]
-pub enum ServerboundPacket {
+pub enum Generic {
     Handshake(HandshakePacket),
     ServerListPing(ServerListPingPacket),
 }
