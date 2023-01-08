@@ -16,7 +16,6 @@ impl McProtocol for String {
         LengthPrefixed::from(Vec::from(self.as_bytes())).serialize_write(writer).await
     }
 
-    #[allow(unused_assignments)]
     async fn deserialize_read<R>(reader: &mut R) -> io::Result<Self> 
     where
         Self: std::marker::Sized,

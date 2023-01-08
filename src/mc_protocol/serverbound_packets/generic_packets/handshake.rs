@@ -65,8 +65,8 @@ impl crate::mc_protocol::McProtocol for HandshakePacket {
         self.server_address.serialize_write(writer).await?;
         writer.write_u16(self.server_port).await?;
         writer.write_u8(match self.next_state {
-            NextState::Login => 1,
-            NextState::Status => 2,
+            NextState::Status => 1,
+            NextState::Login => 2,
         }).await?;
 
         Ok(())

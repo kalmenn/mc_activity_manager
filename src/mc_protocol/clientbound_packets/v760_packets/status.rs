@@ -38,8 +38,7 @@ impl crate::mc_protocol::McProtocol for StatusPacket {
     {
         match reader.read_u8().await? {
             0 => {
-                let mut json_response = String::deserialize_read(reader).await?;
-                reader.read_to_string(&mut json_response).await?;
+                let json_response = String::deserialize_read(reader).await?;
                 Ok(StatusPacket::StatusResponse { json_response })
             },
             1 => {

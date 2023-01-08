@@ -4,6 +4,8 @@ use mc_protocol::{
     ProtocolVersion,
     serverbound_packets::{self, Serverbound},
     clientbound_packets,
+    data_types::{McVarint, LengthPrefixed, get_length_prefixed_reader},
+    McProtocol,
 };
 
 use std::{
@@ -12,8 +14,8 @@ use std::{
     time::Duration,
 };
 use tokio::{
-    net::TcpListener,
-    io::{self, BufReader, AsyncBufReadExt, AsyncWriteExt},
+    net::{TcpListener, TcpStream},
+    io::{self, BufReader, BufWriter, AsyncBufReadExt, AsyncWriteExt},
     task,
     process::Command,
 };
@@ -177,34 +179,59 @@ async fn main() {
             loop{tokio::select!(
                 exit_status = mc_server.wait() => {
                     drop(mc_stdin);
-                    break println!("Minecraft server exited on status: {:?}", exit_status.expect(""));
+                    break println!("Minecraft server exited on status: {:?}", exit_status);
                 },
                 _ = tokio::time::sleep(Duration::from_secs(10)) => {
-                    // let mut codec = ServerCodec::new_client("127.0.0.1:6969".parse().expect("this should be a valid socket")).await
-                    //     .expect("should have been able to conenct to the minecraft server");
+                    let json_response = {
+                        println!("CONNECTING TO SERVER");
+                        let address = std::net::SocketAddrV4::new(std::net::Ipv4Addr::new(127, 0, 0, 1), 6969);
+                        let mut stream = TcpStream::connect(address).await
+                            .expect("should have been able to conenct to the minecraft server");
+                        let (read_half, write_half) = stream.split();
+                        let mut reader = BufReader::new(read_half);
+                        let mut writer = BufWriter::new(write_half);
 
-                    // codec.send_packet(HandshakePacket{
-                    //     protocol_version: McVarint::from(760_i32),
-                    //     server_address: "127.0.0.1".to_owned(),
-                    //     server_port: 6969,
-                    //     next_state: NextState::Status,
-                    // }).await.unwrap();
+                        println!("HANDSHAKING");
+                        LengthPrefixed::from_mc_protocol(
+                            serverbound_packets::generic_packets::HandshakePacket{
+                                protocol_version: McVarint::from(760_i32),
+                                server_address: "asd".to_owned(),
+                                server_port: 25561,
+                                next_state: serverbound_packets::generic_packets::NextState::Status,
+                            }
+                        ).await
+                        .expect("this should be a valid packet")
+                        .serialize_write(&mut writer).await
+                        .expect("we should be able to write to the stream");
 
-                    // codec.send_packet(serverbound::StatusPacket::StatusRequest{}).await.unwrap();
+                        writer.flush().await.expect("stream should still be open");
 
-                    // if let Packet::V760(
-                    //     V760Packet::ClientboundPacket(
-                    //         ClientboundPacket::Status(
-                    //             clientbound::StatusPacket::StatusResponse{ json_response }
-                    // ))) = codec.read_packet().await.expect("Should have been able to recieve a packet from minecraft server") { // BUG: This fails for now. Implementing a seperate client codec and reordering the Packet data structure is needed first.
-                    //     println!("server sent this status message:\n\n{}\n\n", json_response)
-                    //     // TODO: Deserialize json response and check the number of online players
-                    // } else {
-                    //     println!("Warning! Server isn't responding in a valid way to status requests.")
-                    // };
+                        println!("REQUESTING STATUS");
+                        LengthPrefixed::from_mc_protocol(serverbound_packets::v760_packets::StatusPacket::StatusRequest{}).await
+                        .expect("this should be a valid packet")
+                        .serialize_write(&mut writer).await
+                        .expect("we should be able to write to the stream");
 
-                    // mc_stdin.write_all("stop\n".as_bytes()).await.unwrap();
-                    // mc_stdin.flush().await.unwrap();
+                        writer.flush().await.expect("stream should still be open");
+
+                        println!("AWAITING STATUS");
+                        let packet = {
+                            let mut packet_reader = get_length_prefixed_reader(&mut reader).await
+                                .expect("minecraft server should correctly encode packet length");
+                            clientbound_packets::v760_packets::StatusPacket::deserialize_read(&mut packet_reader).await
+                                .expect("minecraft server should correctly encode status response")
+                        };
+
+                        if let clientbound_packets::v760_packets::StatusPacket::StatusResponse{ json_response } = packet {
+                            json_response
+                        } else {
+                            panic!("Warning! Server isn't responding in a valid way to status requests.")
+                        };
+                    };
+
+                    dbg!(&json_response);
+
+                    // TODO: Deserialize json response and check the number of online players
                 },
                 _ = stdin_reader.read_line(&mut line_buffer) => {
                     mc_stdin.write_all(line_buffer.as_bytes()).await
