@@ -11,7 +11,7 @@ use mc_protocol::{
 use std::{
     net::SocketAddr, 
     process::Stdio,
-    time::Duration,
+    time::{Duration, Instant},
 };
 use tokio::{
     net::{TcpListener, TcpStream},
@@ -176,6 +176,8 @@ async fn main() {
             let mut stdin_reader = BufReader::new(io::stdin());
             let mut line_buffer = String::new();
 
+            let mut last_activity = Instant::now();
+
             loop{tokio::select!(
                 exit_status = mc_server.wait() => {
                     drop(mc_stdin);
@@ -221,13 +223,28 @@ async fn main() {
                         if let clientbound_packets::v760_packets::StatusPacket::StatusResponse{ json_response } = packet {
                             json_response
                         } else {
-                            panic!("Warning! Server isn't responding in a valid way to status requests.")
+                            panic!("\x1b[38;5;14mWarning! Server isn't responding in a valid way to status requests.\x1b[0m")
                         }
                     };
 
                     let json_response: serde_json::Value = serde_json::from_str(&response).expect("minecraft should send valid json data");
-
-                    println!("Online players: {}", json_response["players"]["online"])
+                    if let Some(online_players) = json_response["players"]["online"].as_u64() {
+                        if online_players == 0 && last_activity.elapsed() >= Duration::from_secs(30) {
+                            println!("\x1b[38;5;14mStopping Minecraft Server due to inactivity\x1b[0m");
+                            mc_stdin.write_all("stop\n".as_bytes()).await
+                                .expect("should have been able to write to minecraft server stdin");
+                            mc_stdin.flush().await
+                                .expect("should have been able to flush minecraft server stdin");
+                            let exit_status = mc_server.wait().await
+                                .expect("minecraft server should have been running");
+                            drop(mc_stdin);
+                            break println!("\x1b[38;5;14mMinecraft server exited on status: {:?}\x1b[0m", exit_status);
+                        } else if online_players != 0 {
+                            last_activity = Instant::now();
+                        }
+                    } else {
+                        println!("\x1b[38;5;14mWarning: Can not query online player count from minecraft server\x1b[0m");
+                    };
                 },
                 _ = stdin_reader.read_line(&mut line_buffer) => {
                     mc_stdin.write_all(line_buffer.as_bytes()).await
