@@ -182,8 +182,7 @@ async fn main() {
                     break println!("Minecraft server exited on status: {:?}", exit_status);
                 },
                 _ = tokio::time::sleep(Duration::from_secs(10)) => {
-                    let json_response = {
-                        println!("CONNECTING TO SERVER");
+                    let response = {
                         let address = std::net::SocketAddrV4::new(std::net::Ipv4Addr::new(127, 0, 0, 1), 6969);
                         let mut stream = TcpStream::connect(address).await
                             .expect("should have been able to conenct to the minecraft server");
@@ -191,7 +190,6 @@ async fn main() {
                         let mut reader = BufReader::new(read_half);
                         let mut writer = BufWriter::new(write_half);
 
-                        println!("HANDSHAKING");
                         LengthPrefixed::from_mc_protocol(
                             serverbound_packets::generic_packets::HandshakePacket{
                                 protocol_version: McVarint::from(760_i32),
@@ -206,15 +204,13 @@ async fn main() {
 
                         writer.flush().await.expect("stream should still be open");
 
-                        println!("REQUESTING STATUS");
                         LengthPrefixed::from_mc_protocol(serverbound_packets::v760_packets::StatusPacket::StatusRequest{}).await
-                        .expect("this should be a valid packet")
-                        .serialize_write(&mut writer).await
-                        .expect("we should be able to write to the stream");
+                            .expect("this should be a valid packet")
+                            .serialize_write(&mut writer).await
+                            .expect("we should be able to write to the stream");
 
                         writer.flush().await.expect("stream should still be open");
 
-                        println!("AWAITING STATUS");
                         let packet = {
                             let mut packet_reader = get_length_prefixed_reader(&mut reader).await
                                 .expect("minecraft server should correctly encode packet length");
@@ -226,12 +222,12 @@ async fn main() {
                             json_response
                         } else {
                             panic!("Warning! Server isn't responding in a valid way to status requests.")
-                        };
+                        }
                     };
 
-                    dbg!(&json_response);
+                    let json_response: serde_json::Value = serde_json::from_str(&response).expect("minecraft should send valid json data");
 
-                    // TODO: Deserialize json response and check the number of online players
+                    println!("Online players: {}", json_response["players"]["online"])
                 },
                 _ = stdin_reader.read_line(&mut line_buffer) => {
                     mc_stdin.write_all(line_buffer.as_bytes()).await
@@ -240,7 +236,7 @@ async fn main() {
                         .expect("should have been able to flush minecraft server stdin");
                     line_buffer.clear();
                 },
-                // TODO: query player count and stop server when nobody has been online for over 5 minutes.
+                // TODO: Stop server when player count has been 0 for over 5 minutes.
             )}
         }
     }
