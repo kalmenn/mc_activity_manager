@@ -1,4 +1,4 @@
-use tokio::io::{self, AsyncReadExt, AsyncWriteExt, BufWriter};
+use tokio::io::{self, AsyncReadExt, AsyncWriteExt, BufWriter, Take};
 
 use crate::mc_protocol::{data_types::McVarint, McProtocol};
 
@@ -70,4 +70,20 @@ impl LengthPrefixed {
         };
         Ok(Self::from(bytes))
     }
+}
+
+pub async fn get_length_prefixed_reader<R>(stream: &mut R) -> io::Result<Take<&mut R>>
+where
+    R: io::AsyncRead + Unpin + Send
+{
+    let length: u64 = match i32::from(McVarint::deserialize_read(stream).await?).try_into() {
+        Ok(value) => value,
+        Err(_) => return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "failed to convert packet length from i32 to u64. It was probably negative"
+        )),
+    };
+
+    // This will only read a single packet
+    Ok(stream.take(length))
 }

@@ -1,15 +1,13 @@
-use std::borrow::BorrowMut;
-
 use tokio::{
     net::{
         TcpStream,
         tcp::{OwnedReadHalf, OwnedWriteHalf},
     },
-    io::{self, BufReader, BufWriter, AsyncReadExt, AsyncWriteExt}
+    io::{self, BufReader, BufWriter, AsyncWriteExt}
 };
 
 use crate::mc_protocol::{
-    data_types::{McVarint, LengthPrefixed},
+    data_types::{LengthPrefixed, get_length_prefixed_reader},
     McProtocol,
     ProtocolVersion,
     ConnectionState,
@@ -48,16 +46,8 @@ impl ServerCodec {
                             serverbound_packets::generic_packets::ServerListPingPacket::deserialize_read(&mut self.reader).await?
         )))}};
 
-        let packet_length: u64 = match i32::from(McVarint::deserialize_read(&mut self.reader).await?).try_into() {
-            Ok(value) => value,
-            Err(_) => return Err(io::Error::new(
-                io::ErrorKind::InvalidData,
-                "failed to convert packet length from i32 to u64. It was probably negative"
-            )),
-        };
-
         // This will only read a single packet
-        let mut packet_reader = self.reader.borrow_mut().take(packet_length);
+        let mut packet_reader = get_length_prefixed_reader(&mut self.reader).await?;
 
         let packet = if let ConnectionState::Handshaking = self.connection_state {
             let packet = serverbound_packets::generic_packets::HandshakePacket::deserialize_read(&mut packet_reader).await?;
