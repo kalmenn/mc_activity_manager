@@ -1,4 +1,4 @@
-use tokio::io::{self, AsyncReadExt, AsyncWriteExt};
+use tokio::io::{self, AsyncReadExt, AsyncWriteExt, BufWriter};
 
 use crate::mc_protocol::{data_types::McVarint, McProtocol};
 
@@ -57,5 +57,17 @@ impl From<Vec<u8>> for LengthPrefixed {
 impl From<LengthPrefixed> for Vec<u8> {
     fn from(length_prefixed: LengthPrefixed) -> Self {
         length_prefixed.data
+    }
+}
+
+impl LengthPrefixed {
+    pub async fn from_mc_protocol(object: impl McProtocol) -> io::Result<Self> {
+        let bytes = {
+            let mut writer = BufWriter::new(Vec::<u8>::new());
+            object.serialize_write(&mut writer).await?;
+            writer.flush().await?;
+            writer.into_inner()
+        };
+        Ok(Self::from(bytes))
     }
 }

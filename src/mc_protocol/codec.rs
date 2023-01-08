@@ -90,12 +90,10 @@ impl ServerCodec {
     }
 
     pub async fn send_packet(&mut self, packet: impl McProtocol) -> io::Result<()> {
-        LengthPrefixed::from({
-            let mut writer = BufWriter::new(Vec::<u8>::new());
-            packet.serialize_write(&mut writer).await?;
-            writer.flush().await?;
-            writer.into_inner()
-        }).serialize_write(&mut self.writer).await?;
+        LengthPrefixed::from_mc_protocol(packet)
+            .await?
+            .serialize_write(&mut self.writer)
+            .await?;
 
         self.writer.flush().await
     }
