@@ -46,6 +46,10 @@ struct Cli {
     #[arg(long, short, default_value_t = 25565)]
     port: u16,
 
+    /// the interface your minecraft server listens on
+    #[arg(long, short, default_value_t = Ipv4Addr::new(0, 0, 0, 0))]
+    interface: Ipv4Addr,
+
     /// the period of time (in minutes) activity manager will consider to be inactivity
     #[arg(long, short, default_value_t = 5)]
     timeout: u32
@@ -56,7 +60,7 @@ struct Cli {
 async fn main() {
     let args = Cli::parse();
 
-    let socket = SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), args.port);
+    let socket = SocketAddrV4::new(args.interface, args.port);
 
     let (stdin_sender, mut stdin_reciever) = tokio::sync::mpsc::channel::<String>(10);
 
@@ -67,7 +71,7 @@ async fn main() {
         loop {
             stdin_reader.read_line(&mut line_buffer).await
                 .expect("should have been able to read from stdin");
-            stdin_sender.send(line_buffer.clone()).await.expect("channel should close");
+            stdin_sender.send(line_buffer.clone()).await.expect("channel shouldn't close");
             if &line_buffer == "stop\n" {break};
             line_buffer.clear();
         }
@@ -75,11 +79,16 @@ async fn main() {
 
     loop {
         {
-            let listener = TcpListener::bind(socket)
-                .await
-                .expect("Couldn't bind to TCP socket");
+            let listener = match TcpListener::bind(socket).await {
+                Ok(listener) => listener,
+                Err(err) => {
+                    println!("\x1b[38;5;11mCritical: Could not bind to socket {socket}. Got error: {err}\x1b[0m");
+                    println!("\x1b[38;5;11mPlease ensure the interface and port are valid and not used by any other program\x1b[0m");
+                    std::process::exit(1);
+                }
+            };
 
-            println!("\n\x1b[38;2;0;200;0mSpoofer listening on port {}\x1b[0m\n", socket.port());
+            println!("\n\x1b[38;2;0;200;0mSpoofer listening on port {}\x1b[0m\n", args.port);
 
             let (start_sender, mut start_reciever) = tokio::sync::mpsc::channel::<()>(1);
 
