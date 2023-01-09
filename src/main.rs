@@ -9,9 +9,10 @@ use mc_protocol::{
 };
 
 use std::{
-    net::SocketAddr, 
+    net::{SocketAddrV4, Ipv4Addr}, 
     process::Stdio,
     time::{Duration, Instant},
+    path::PathBuf,
 };
 use tokio::{
     net::{TcpListener, TcpStream},
@@ -20,9 +21,36 @@ use tokio::{
     process::Command,
 };
 
+use clap::Parser;
+
+#[derive(Parser, Debug)]
+#[command(
+    name = "Minecraft Server Activity Manager",
+    author = "kalmenn <kalmenn@proton.me>",
+    about = 
+r#"Manages a minecraft server by automatically stopping it in periods of inactivity.
+
+When no players have been online for more than 5 minutes, the server will close and activity manager will listen for incoming connections.
+When someone tries to connect to the minecraft server, it will start it again.
+
+Stdin is forwarded to the minecraft server, so you can still send commands. However, it is interpreted slightly:
+- 'stop' will stop the minecraft server but also shut down the activity manager. This means it won't boot up automatically again.
+- 'spoof' will stop the minecraft server and enter the spoofing stage. It will start again when it recieves a connection."#,
+)]
+struct Cli {
+    /// path to a script that starts your minecraft server
+    start_script: PathBuf,
+
+    /// the port your minecraft server listens on
+    #[arg(long, short = 'p', default_value_t = 25565)]
+    port: u16,
+}
+
 #[tokio::main(flavor = "current_thread")]
 async fn main() {
-    let socket: SocketAddr = "127.0.0.1:6969".parse().expect("this should be a valid socket");
+    let args = Cli::parse();
+
+    let socket = SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), args.port);
 
     let (stdin_sender, mut stdin_reciever) = tokio::sync::mpsc::channel::<String>(10);
 
@@ -188,7 +216,7 @@ async fn main() {
             println!("\n\x1b[38;2;0;200;0mStarting minecraft server as child process\x1b[0m\n");
 
             let mut mc_server = Command::new("/bin/bash")
-                .args(["./start.sh"])
+                .args([args.start_script.as_os_str()])
                 .stdin(Stdio::piped())
                 .spawn()
                 .expect("failed to start server in subprocess");
@@ -267,7 +295,7 @@ impl From<io::Error> for PlayercountError {
     }
 }
 
-async fn get_playercount(address: SocketAddr) -> Result<u64, PlayercountError> {
+async fn get_playercount(address: SocketAddrV4) -> Result<u64, PlayercountError> {
     let mut stream = TcpStream::connect(address).await?;
     let (read_half, write_half) = stream.split();
     let mut reader = BufReader::new(read_half);
