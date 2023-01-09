@@ -22,7 +22,7 @@ use tokio::{
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() {
-    let socket: SocketAddr = "0.0.0.0:6969".parse().expect("this should be a valid socket");
+    let socket: SocketAddr = "127.0.0.1:6969".parse().expect("this should be a valid socket");
 
     loop {
         {
@@ -185,7 +185,7 @@ async fn main() {
                     break println!("\x1b[38;5;14mMinecraft server exited on status: {exit_status:?}\x1b[0m");
                 },
                 _ = tokio::time::sleep(Duration::from_secs(10)) => {
-                    match get_playercount("127.0.0.1:6969".parse().expect("this should be a valid socket")).await {
+                    match get_playercount(socket).await {
                         Err(err) => match err {
                             PlayercountError::GotNull => {
                                 number_of_nulls += 1;
