@@ -34,6 +34,9 @@ async fn main() {
 
             let (start_sender, mut start_reciever) = tokio::sync::mpsc::channel::<()>(1);
 
+            let mut line_buffer = String::new();
+            let mut stdin_reader = BufReader::new(io::stdin());
+
             // We handle connections and loop until we recieve a Login request
             loop{if tokio::select!(
                 Ok((stream, address)) = listener.accept() => {
@@ -157,6 +160,13 @@ async fn main() {
 
                     true // Start the server
                 },
+                _ = stdin_reader.read_line(&mut line_buffer) => {
+                    if line_buffer == "stop\n".to_owned() {
+                        std::process::exit(0);
+                    };
+                    line_buffer.clear();
+                    false
+                }
             ){
                 // We exit the connection-handling loop whenever one of the branches returns true
                 // and switch to the next state in the main loop (running the server)
