@@ -46,6 +46,7 @@ struct Cli {
     port: u16,
 }
 
+#[allow(clippy::single_match)]
 #[tokio::main(flavor = "current_thread")]
 async fn main() {
     let args = Cli::parse();
@@ -94,13 +95,11 @@ async fn main() {
 
                         let output = async {loop {match codec.read_packet().await? {
                             Serverbound::Generic(packet) => match packet {
-                                serverbound_packets::generic_packets::Generic::Handshake(packet) => {
-                                    status(&format!("Switching state to: {}", packet.next_state));
-                                },
                                 serverbound_packets::generic_packets::Generic::ServerListPing(_) => {
                                     status("Recieved legacy server list ping");
                                     break Ok(false)
                                 }
+                                _ => {},
                             },
                             Serverbound::V760(packet) => match packet {
                                 serverbound_packets::v760_packets::V760::Status(packet) => {match packet {
@@ -164,7 +163,7 @@ async fn main() {
                                                 }
                                             ]
                                         ).to_string()}).await?;
-                                        status("Sent disconnect message");
+                                        status("Disconnected player");
                                         break io::Result::Ok(true)
                                     },
                                 }},
