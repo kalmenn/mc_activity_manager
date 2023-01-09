@@ -24,6 +24,21 @@ use tokio::{
 async fn main() {
     let socket: SocketAddr = "127.0.0.1:6969".parse().expect("this should be a valid socket");
 
+    let (stdin_sender, mut stdin_reciever) = tokio::sync::mpsc::channel::<String>(10);
+
+    task::spawn(async move {
+        let stdin = tokio::io::stdin();
+        let mut stdin_reader = BufReader::new(stdin);
+        let mut line_buffer = String::new();
+        loop {
+            stdin_reader.read_line(&mut line_buffer).await
+                .expect("should have been able to read from stdin");
+            stdin_sender.send(line_buffer.clone()).await.expect("channel should close");
+            if &line_buffer == "stop\n" {break};
+            line_buffer.clear();
+        }
+    });
+
     loop {
         {
             let listener = TcpListener::bind(socket)
@@ -33,9 +48,6 @@ async fn main() {
             println!("\n\x1b[38;2;0;200;0mSpoofer listening on port {}\x1b[0m\n", socket.port());
 
             let (start_sender, mut start_reciever) = tokio::sync::mpsc::channel::<()>(1);
-
-            let mut line_buffer = String::new();
-            let mut stdin_reader = BufReader::new(io::stdin());
 
             // We handle connections and loop until we recieve a Login request
             loop{if tokio::select!(
@@ -160,11 +172,10 @@ async fn main() {
 
                     true // Start the server
                 },
-                _ = stdin_reader.read_line(&mut line_buffer) => {
-                    if line_buffer == "stop\n".to_owned() {
+                line = stdin_reciever.recv() => {
+                    if &line.expect("channel shouldn't close") == "stop\n" {
                         std::process::exit(0);
                     };
-                    line_buffer.clear();
                     false
                 }
             ){
@@ -183,8 +194,6 @@ async fn main() {
                 .expect("failed to start server in subprocess");
 
             let mut mc_stdin = mc_server.stdin.take().expect("should have been able to bind to minecraft server stdin");
-            let mut stdin_reader = BufReader::new(io::stdin());
-            let mut line_buffer = String::new();
 
             let mut last_activity = Instant::now();
             let mut number_of_nulls: u32 = 0;
@@ -204,7 +213,7 @@ async fn main() {
                                 }
                             },
                             PlayercountError::Inbound => println!("\x1b[38;5;11mWarning: Could not query player count from minecraft server.\nThis is not your fault, it is responding in an incorrect way\x1b[0m"),
-                            PlayercountError::IO(err) => println!("\x1b[38;5;11mWarning: Could not query player count from minecraft server. Got err:\x1b[0m {err}"),
+                            PlayercountError::IO(err) => println!("\x1b[38;5;11mWarning: Could not reach minecraft server to query player count. Got err: {err}\x1b[0m"),
                         },
                         Ok(playercount) => {
                             if playercount == 0 && last_activity.elapsed() >= Duration::from_secs(300) {
@@ -218,19 +227,23 @@ async fn main() {
                         }
                     }
                 },
-                _ = stdin_reader.read_line(&mut line_buffer) => {
-                    if line_buffer == "spoof\n".to_owned() {
+                line = stdin_reciever.recv() => {
+                    let line = line.expect("channel shouldn't close");
+                    if &line == "spoof\n" {
+                        println!("\x1b[38;5;14mStopping minecraft server and entering spoofing mode\x1b[0m");
+
                         write_line(&mut mc_stdin, "stop\n").await.expect("should have been able to forward input to minecraft server stdin");
-                    } else if line_buffer == "stop\n".to_owned() {
+                    } else if &line == "stop\n" {
+                        println!("\x1b[38;5;14mFully stopping the server\x1b[0m");
+
                         write_line(&mut mc_stdin, "stop\n").await.expect("should have been able to forward input to minecraft server stdin");
 
                         println!("\x1b[38;5;14mMinecraft server exited on status: {:?}\x1b[0m", mc_server.wait().await);
 
                         std::process::exit(0);
                     } else {
-                        write_line(&mut mc_stdin, &line_buffer).await.expect("should have been able to forward input to minecraft server stdin")
+                        write_line(&mut mc_stdin, &line).await.expect("should have been able to forward input to minecraft server stdin")
                     }
-                    line_buffer.clear();
                 },
             )}
         }
@@ -294,6 +307,6 @@ async fn get_playercount(address: SocketAddr) -> Result<u64, PlayercountError> {
             .ok_or(PlayercountError::GotNull)?
         )
     } else {
-        return Err(PlayercountError::Inbound)
+        Err(PlayercountError::Inbound)
     }
 }
