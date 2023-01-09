@@ -3,6 +3,16 @@
 version = 3
 
 [[package]]
+name = "activitymanager"
+version = "1.0.0"
+dependencies = [
+ "async-trait",
+ "clap",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
 name = "async-trait"
 version = "0.1.60"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -370,16 +380,6 @@ checksum = "02e2d2db9033d13a1567121ddd7a095ee144db4e1ca1b1bda3419bc0da294ebd"
 dependencies = [
  "libc",
  "winapi",
-]
-
-[[package]]
-name = "spoofer"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "clap",
- "serde_json",
- "tokio",
 ]
 
 [[package]]
