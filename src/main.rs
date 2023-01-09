@@ -177,74 +177,39 @@ async fn main() {
             let mut line_buffer = String::new();
 
             let mut last_activity = Instant::now();
+            let mut number_of_nulls: u32 = 0;
 
             loop{tokio::select!(
                 exit_status = mc_server.wait() => {
                     drop(mc_stdin);
-                    break println!("Minecraft server exited on status: {:?}", exit_status);
+                    break println!("\x1b[38;5;14mMinecraft server exited on status: {exit_status:?}\x1b[0m");
                 },
                 _ = tokio::time::sleep(Duration::from_secs(10)) => {
-                    let response = {
-                        let address = std::net::SocketAddrV4::new(std::net::Ipv4Addr::new(127, 0, 0, 1), 6969);
-                        let mut stream = TcpStream::connect(address).await
-                            .expect("should have been able to conenct to the minecraft server");
-                        let (read_half, write_half) = stream.split();
-                        let mut reader = BufReader::new(read_half);
-                        let mut writer = BufWriter::new(write_half);
-
-                        LengthPrefixed::from_mc_protocol(
-                            serverbound_packets::generic_packets::HandshakePacket{
-                                protocol_version: McVarint::from(760_i32),
-                                server_address: "asd".to_owned(),
-                                server_port: 25561,
-                                next_state: serverbound_packets::generic_packets::NextState::Status,
+                    match get_playercount("127.0.0.1:6969".parse().expect("this should be a valid socket")).await {
+                        Err(err) => match err {
+                            PlayercountError::GotNull => {
+                                number_of_nulls += 1;
+                                if number_of_nulls > 3 {
+                                    println!("\x1b[38;5;11mWarning: Status response from the server doesn't include player count.\x1b[0m")
+                                }
+                            },
+                            PlayercountError::Inbound => println!("\x1b[38;5;11mWarning: Could not query player count from minecraft server.\nThis is not your fault, it is responding in an incorrect way\x1b[0m"),
+                            PlayercountError::IO(err) => println!("\x1b[38;5;11mWarning: Could not query player count from minecraft server. Got err:\x1b[0m {err}"),
+                        },
+                        Ok(playercount) => {
+                            if playercount == 0 && last_activity.elapsed() >= Duration::from_secs(300) {
+                                println!("\x1b[38;5;14mStopping Minecraft Server due to inactivity\x1b[0m");
+                                mc_stdin.write_all("stop\n".as_bytes()).await
+                                    .expect("should have been able to write to minecraft server stdin");
+                                mc_stdin.flush().await
+                                    .expect("should have been able to flush minecraft server stdin");
+                                drop(mc_stdin);
+                                break println!("\x1b[38;5;14mMinecraft server exited on status: {:?}\x1b[0m", mc_server.wait().await);
+                            } else if playercount != 0 {
+                                last_activity = Instant::now();
                             }
-                        ).await
-                        .expect("this should be a valid packet")
-                        .serialize_write(&mut writer).await
-                        .expect("we should be able to write to the stream");
-
-                        writer.flush().await.expect("stream should still be open");
-
-                        LengthPrefixed::from_mc_protocol(serverbound_packets::v760_packets::StatusPacket::StatusRequest{}).await
-                            .expect("this should be a valid packet")
-                            .serialize_write(&mut writer).await
-                            .expect("we should be able to write to the stream");
-
-                        writer.flush().await.expect("stream should still be open");
-
-                        let packet = {
-                            let mut packet_reader = get_length_prefixed_reader(&mut reader).await
-                                .expect("minecraft server should correctly encode packet length");
-                            clientbound_packets::v760_packets::StatusPacket::deserialize_read(&mut packet_reader).await
-                                .expect("minecraft server should correctly encode status response")
-                        };
-
-                        if let clientbound_packets::v760_packets::StatusPacket::StatusResponse{ json_response } = packet {
-                            json_response
-                        } else {
-                            panic!("\x1b[38;5;14mWarning! Server isn't responding in a valid way to status requests.\x1b[0m")
                         }
-                    };
-
-                    let json_response: serde_json::Value = serde_json::from_str(&response).expect("minecraft should send valid json data");
-                    if let Some(online_players) = json_response["players"]["online"].as_u64() {
-                        if online_players == 0 && last_activity.elapsed() >= Duration::from_secs(30) {
-                            println!("\x1b[38;5;14mStopping Minecraft Server due to inactivity\x1b[0m");
-                            mc_stdin.write_all("stop\n".as_bytes()).await
-                                .expect("should have been able to write to minecraft server stdin");
-                            mc_stdin.flush().await
-                                .expect("should have been able to flush minecraft server stdin");
-                            let exit_status = mc_server.wait().await
-                                .expect("minecraft server should have been running");
-                            drop(mc_stdin);
-                            break println!("\x1b[38;5;14mMinecraft server exited on status: {:?}\x1b[0m", exit_status);
-                        } else if online_players != 0 {
-                            last_activity = Instant::now();
-                        }
-                    } else {
-                        println!("\x1b[38;5;14mWarning: Can not query online player count from minecraft server\x1b[0m");
-                    };
+                    }
                 },
                 _ = stdin_reader.read_line(&mut line_buffer) => {
                     mc_stdin.write_all(line_buffer.as_bytes()).await
@@ -253,8 +218,63 @@ async fn main() {
                         .expect("should have been able to flush minecraft server stdin");
                     line_buffer.clear();
                 },
-                // TODO: Stop server when player count has been 0 for over 5 minutes.
             )}
         }
+    }
+}
+
+enum PlayercountError {
+    GotNull,
+    Inbound,
+    IO(io::Error)
+}
+
+impl From<io::Error> for PlayercountError {
+    fn from(err: io::Error) -> Self {
+        PlayercountError::IO(err)
+    }
+}
+
+async fn get_playercount(address: SocketAddr) -> Result<u64, PlayercountError> {
+    let mut stream = TcpStream::connect(address).await?;
+    let (read_half, write_half) = stream.split();
+    let mut reader = BufReader::new(read_half);
+    let mut writer = BufWriter::new(write_half);
+
+    LengthPrefixed::from_mc_protocol(
+        serverbound_packets::generic_packets::HandshakePacket{
+            protocol_version: McVarint::from(760_i32),
+            server_address: "asd".to_owned(),
+            server_port: 25561,
+            next_state: serverbound_packets::generic_packets::NextState::Status,
+        }
+    ).await?
+    .serialize_write(&mut writer).await?;
+
+    writer.flush().await?;
+
+    LengthPrefixed::from_mc_protocol(
+        serverbound_packets::v760_packets::StatusPacket::StatusRequest{}
+    ).await?
+    .serialize_write(&mut writer).await?;
+
+    writer.flush().await?;
+
+    let packet = {
+        let mut packet_reader = get_length_prefixed_reader(&mut reader).await
+            .map_err(|_| PlayercountError::Inbound)?;
+        clientbound_packets::v760_packets::StatusPacket::deserialize_read(&mut packet_reader).await
+            .map_err(|_| PlayercountError::Inbound)?
+    };
+
+    if let clientbound_packets::v760_packets::StatusPacket::StatusResponse{ json_response } = packet {
+        Ok(
+            serde_json::from_str::<serde_json::Value>(&json_response)
+            .map_err(|_| PlayercountError::Inbound)?
+            ["players"]["online"].as_u64()
+            .ok_or(PlayercountError::GotNull)?
+        )
+    } else {
+        return Err(PlayercountError::Inbound)
     }
 }
