@@ -58,10 +58,6 @@ struct Cli {
 #[allow(clippy::single_match)]
 #[tokio::main(flavor = "current_thread")]
 async fn main() {
-    let args = Cli::parse();
-
-    let socket = SocketAddrV4::new(args.interface, args.port);
-
     let (stdin_sender, mut stdin_reciever) = tokio::sync::mpsc::channel::<String>(10);
 
     task::spawn(async move {
@@ -69,13 +65,16 @@ async fn main() {
         let mut stdin_reader = BufReader::new(stdin);
         let mut line_buffer = String::new();
         loop {
-            stdin_reader.read_line(&mut line_buffer).await
-                .expect("should have been able to read from stdin");
+            stdin_reader.read_line(&mut line_buffer).await.expect("should have been able to read from stdin");
             stdin_sender.send(line_buffer.clone()).await.expect("channel shouldn't close");
             if &line_buffer == "stop\n" {break};
             line_buffer.clear();
         }
     });
+
+    let args = Cli::parse();
+
+    let socket = SocketAddrV4::new(args.interface, args.port);
 
     loop {
         {
