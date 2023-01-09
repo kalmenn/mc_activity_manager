@@ -30,8 +30,8 @@ use clap::Parser;
     about = 
 r#"Manages a minecraft server by automatically stopping it in periods of inactivity.
 
-When no players have been online for more than 5 minutes, the server will close and activity manager will listen for incoming connections.
-When someone tries to connect to the minecraft server, it will start it again.
+When no players have been online for more than the specified timeout, the minecraft server will be closed and activity manager will listen for incoming connections.
+When someone tries to connect to the minecraft server, it will be started again.
 
 Stdin is forwarded to the minecraft server, so you can still send commands. However, it is interpreted slightly:
 - 'stop' will stop the minecraft server but also shut down the activity manager. This means it won't boot up automatically again.
@@ -44,6 +44,10 @@ struct Cli {
     /// the port your minecraft server listens on
     #[arg(long, short = 'p', default_value_t = 25565)]
     port: u16,
+
+    /// the period of time (in minutes) activity manager will consider to be inactivity
+    #[arg(long, short, default_value_t = 5)]
+    timeout: u32
 }
 
 #[allow(clippy::single_match)]
@@ -243,7 +247,7 @@ async fn main() {
                             PlayercountError::IO(err) => println!("\x1b[38;5;11mWarning: Could not reach minecraft server to query player count. Got err: {err}\x1b[0m"),
                         },
                         Ok(playercount) => {
-                            if playercount == 0 && last_activity.elapsed() >= Duration::from_secs(300) {
+                            if playercount == 0 && last_activity.elapsed() >= Duration::from_secs(u64::from(args.timeout) * 60) {
                                 println!("\x1b[38;5;14mStopping Minecraft Server due to inactivity\x1b[0m");
                                 write_line(&mut mc_stdin, "stop\n").await.expect("should have been able to forward input to minecraft server stdin");
                                 drop(mc_stdin);
