@@ -209,10 +209,7 @@ async fn main() {
                         Ok(playercount) => {
                             if playercount == 0 && last_activity.elapsed() >= Duration::from_secs(300) {
                                 println!("\x1b[38;5;14mStopping Minecraft Server due to inactivity\x1b[0m");
-                                mc_stdin.write_all("stop\n".as_bytes()).await
-                                    .expect("should have been able to write to minecraft server stdin");
-                                mc_stdin.flush().await
-                                    .expect("should have been able to flush minecraft server stdin");
+                                write_line(&mut mc_stdin, "stop\n").await.expect("should have been able to forward input to minecraft server stdin");
                                 drop(mc_stdin);
                                 break println!("\x1b[38;5;14mMinecraft server exited on status: {:?}\x1b[0m", mc_server.wait().await);
                             } else if playercount != 0 {
@@ -222,15 +219,27 @@ async fn main() {
                     }
                 },
                 _ = stdin_reader.read_line(&mut line_buffer) => {
-                    mc_stdin.write_all(line_buffer.as_bytes()).await
-                        .expect("should have been able to forward input to minecraft server stdin");
-                    mc_stdin.flush().await
-                        .expect("should have been able to flush minecraft server stdin");
+                    if line_buffer == "spoof\n".to_owned() {
+                        write_line(&mut mc_stdin, "stop\n").await.expect("should have been able to forward input to minecraft server stdin");
+                    } else if line_buffer == "stop\n".to_owned() {
+                        write_line(&mut mc_stdin, "stop\n").await.expect("should have been able to forward input to minecraft server stdin");
+
+                        println!("\x1b[38;5;14mMinecraft server exited on status: {:?}\x1b[0m", mc_server.wait().await);
+
+                        std::process::exit(0);
+                    } else {
+                        write_line(&mut mc_stdin, &line_buffer).await.expect("should have been able to forward input to minecraft server stdin")
+                    }
                     line_buffer.clear();
                 },
             )}
         }
     }
+}
+
+async fn write_line(stdin: &mut tokio::process::ChildStdin, line: &str) -> io::Result<()> {
+    stdin.write_all(line.as_bytes()).await?;
+    stdin.flush().await
 }
 
 enum PlayercountError {
