@@ -174,14 +174,14 @@ async fn main() {
                                                     break Ok(true)
                                                 } else {
                                                     codec.send_packet(clientbound::LoginPacket::Disconnect {
-                                                        reason: "You are not whitelisted on this server".to_owned()
+                                                        reason: r#"{"text": "You are not whitelisted on this server"}"#.to_owned()
                                                     }).await?;
                                                     status(&format!("\x1b[38;5;14m{name}\x1b[0m is not whitelsited. Disconnected player"));
                                                 }
                                             } else {
                                                 status("Client did not provide a uuid: Can not check against whitelist");
                                                 codec.send_packet(clientbound::LoginPacket::Disconnect {
-                                                    reason: "You are not whitelisted on this server".to_owned()
+                                                    reason: r#"{"text": "You are not whitelisted on this server"}"#.to_owned()
                                                 }).await?;
                                             }
                                         } else {
