@@ -13,12 +13,14 @@ use std::{
     process::Stdio,
     time::{Duration, Instant},
     path::PathBuf,
+    collections::HashMap,
 };
 use tokio::{
     net::{TcpListener, TcpStream},
-    io::{self, BufReader, BufWriter, AsyncBufReadExt, AsyncWriteExt},
+    io::{self, BufReader, BufWriter, AsyncBufReadExt, AsyncWriteExt, AsyncReadExt},
     task,
     process::Command,
+    fs,
 };
 
 use clap::Parser;
@@ -52,7 +54,11 @@ struct Cli {
 
     /// the period of time (in minutes) activity manager will consider to be inactivity
     #[arg(long, short, default_value_t = 5)]
-    timeout: u32
+    timeout: u32,
+
+    /// if set, activity manager will only start the minecraft server for players present in the provided whitelist.json.
+    #[arg(long, short)]
+    whitelist: Option<PathBuf>,
 }
 
 #[allow(clippy::single_match)]
@@ -84,6 +90,21 @@ async fn main() {
                     println!("\x1b[38;5;11mCritical: Could not bind to socket {socket}. Got error: {err}\x1b[0m");
                     println!("\x1b[38;5;11mPlease ensure the interface and port are valid and not used by any other program\x1b[0m");
                     std::process::exit(1);
+                }
+            };
+
+            let whitelist = match &args.whitelist {
+                None => None,
+                Some(location) => match parse_whitelist(location).await {
+                    Ok(whitelist) => Some(whitelist),
+                    Err(WhitelistParseError::IO(err)) => {
+                        println!("\x1b[38;5;11mCritical: Couldn't read whitelist. Got err: {err}\x1b[0m");
+                        std::process::exit(1);
+                    },
+                    Err(WhitelistParseError::ParseJson(err)) => {
+                        println!("\x1b[38;5;11mCritical: Whitelist conatined invalid JSON. Got err: {err}\x1b[0m");
+                        std::process::exit(1);
+                    },
                 }
             };
 
@@ -288,6 +309,38 @@ async fn main() {
             )}
         }
     }
+}
+
+enum WhitelistParseError {
+    ParseJson(serde_json::Error),
+    IO(io::Error),
+}
+
+impl From<io::Error> for WhitelistParseError {
+    fn from(err: io::Error) -> Self {
+        WhitelistParseError::IO(err)
+    }
+}
+
+async fn parse_whitelist(location: &PathBuf) -> Result<Vec<u128>, WhitelistParseError> {
+    let mut file_content = String::new();
+    fs::File::open(location).await?.read_to_string(&mut file_content).await?;
+
+    let whitelist: HashMap<String, String> = match serde_json::from_str(&file_content) {
+        Ok(parsed) => parsed,
+        Err(err) => return Err(WhitelistParseError::ParseJson(err)),
+    };
+
+    let mut uuids = Vec::<u128>::with_capacity(whitelist.len());
+
+    for uuid in whitelist.keys() {
+        match uuid.replace('-', "").parse() {
+            Ok(uuid) => uuids.push(uuid),
+            Err(_) => println!("\x1b[38;5;11mWarning: couldn't parse uuid {uuid} in whitelist\x1b[0m"),
+        };
+    }
+
+    Ok(uuids)
 }
 
 async fn write_line(stdin: &mut tokio::process::ChildStdin, line: &str) -> io::Result<()> {
