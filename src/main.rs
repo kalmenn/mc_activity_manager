@@ -37,8 +37,9 @@ When someone tries to connect to the minecraft server, it will be started again.
 
 Stdin is forwarded to the minecraft server, so you can still send commands. However, it is interpreted slightly:
 - 'stop' will stop the minecraft server but also shut down the activity manager. This means it won't boot up automatically again.
-  This is intended as a compatibility feature for any other managment script that might expect 'stop' to stop the whole process.
-- 'spoof' will stop the minecraft server and enter the spoofing stage. It will start again when it recieves a connection."#,
+   This is intended as a compatibility feature for any other managment script that might expect 'stop' to stop the whole process.
+- 'spoof' will stop the minecraft server and enter the spoofing stage. It will start again when it recieves a connection.
+- 'start' only works in the spoofing stage and starts the minecraft server whether someone tried to connect or not"#,
 )]
 struct Cli {
     /// path to a script that starts your minecraft server
@@ -110,8 +111,6 @@ async fn main() {
                     },
                 }
             };
-
-            dbg!(&whitelist);
 
             println!("\n\x1b[38;2;0;200;0mSpoofer listening on port {}\x1b[0m\n", args.port);
 
@@ -223,10 +222,15 @@ async fn main() {
                     true // Start the server
                 },
                 line = stdin_reciever.recv() => {
-                    if &line.expect("channel shouldn't close") == "stop\n" {
+                    let line = line.expect("channel shouldn't close");
+                    if &line == "stop\n" {
                         std::process::exit(0);
-                    };
-                    false
+                    } else if &line == "start\n" {
+                        true
+                    } else {
+                        println!("\x1b[38;5;11mUnknown command\x1b[0m");
+                        false
+                    }
                 }
             ){
                 // We exit the connection-handling loop whenever one of the branches returns true
