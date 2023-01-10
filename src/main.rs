@@ -13,7 +13,7 @@ use std::{
     process::Stdio,
     time::{Duration, Instant},
     path::PathBuf,
-    collections::HashMap,
+    sync::Arc,
 };
 use tokio::{
     net::{TcpListener, TcpStream},
@@ -61,6 +61,9 @@ struct Cli {
     whitelist: Option<PathBuf>,
 }
 
+const LOGIN_RESPONSE: &str = r#"[{"text":"Serveur Hors Ligne\n\n","color":"red"},{"text":"Demande de démarrage reçue,\nle serveur devrait être disponible d'ici une minute","color":"white"}]"#;
+const STATUS_RESPONSE: &str = r#"{"description":[{"text":"Hors Ligne\n","color":"dark_red"},{"text":"Connectez vous pour démarrer le serveur","color":"dark_green"}],"version":{"name":"1.19.2","protocol":760}}"#;
+
 #[allow(clippy::single_match)]
 #[tokio::main(flavor = "current_thread")]
 async fn main() {
@@ -96,7 +99,7 @@ async fn main() {
             let whitelist = match &args.whitelist {
                 None => None,
                 Some(location) => match parse_whitelist(location).await {
-                    Ok(whitelist) => Some(whitelist),
+                    Ok(whitelist) => Some(Arc::new(whitelist)),
                     Err(WhitelistParseError::IO(err)) => {
                         println!("\x1b[38;5;11mCritical: Couldn't read whitelist. Got err: {err}\x1b[0m");
                         std::process::exit(1);
@@ -108,6 +111,8 @@ async fn main() {
                 }
             };
 
+            dbg!(&whitelist);
+
             println!("\n\x1b[38;2;0;200;0mSpoofer listening on port {}\x1b[0m\n", args.port);
 
             let (start_sender, mut start_reciever) = tokio::sync::mpsc::channel::<()>(1);
@@ -116,6 +121,8 @@ async fn main() {
             loop{if tokio::select!(
                 Ok((stream, address)) = listener.accept() => {
                     let start_sender = start_sender.clone();
+
+                    let whitelist = whitelist.clone();
 
                     task::spawn(async move {
                         let address = format!("\x1b[38;5;14m{address}\x1b[0m");
@@ -139,40 +146,14 @@ async fn main() {
                                 serverbound_packets::v760_packets::V760::Status(packet) => {match packet {
                                     serverbound_packets::v761_packets::StatusPacket::StatusRequest{} => {
                                         status("Requested status");
-                                        let json_response = serde_json::json!({
-                                            "description": [
-                                                {
-                                                    "text": "Hors Ligne\n",
-                                                    "color": "dark_red"
-                                                },
-                                                {
-                                                    "text": "Connectez vous pour démarrer le serveur",
-                                                    "color": "dark_green"
-                                                }
-                                            ],
-                                            "players": {
-                                                "max": 0,
-                                                "online": 1,
-                                                "sample": [
-                                                    {
-                                                        "name": "J'ai pas hacké je jure",
-                                                        "id": "4566e69f-c907-48ee-8d71-d7ba5aa00d20"
-                                                    }
-                                                ]
-                                            },
-                                            "version": {
-                                                "name": "1.19.2",
-                                                "protocol": 760
-                                            }
-                                        }).to_string();
-                                        codec.send_packet(clientbound_packets::v760_packets::StatusPacket::StatusResponse{ json_response }).await?;
+                                        codec.send_packet(clientbound_packets::v760_packets::StatusPacket::StatusResponse{ json_response: String::from(STATUS_RESPONSE) }).await?;
                                         status("Sent status");
                                     },
                                     serverbound_packets::v761_packets::StatusPacket::PingRequest{ payload } => {
                                         status("Requested ping");
                                         codec.send_packet(clientbound_packets::v760_packets::StatusPacket::PingResponse{ payload }).await?;
                                         status("Sent pong");
-                                        break io::Result::Ok(false)
+                                        break Ok(false)
                                     },
                                 }},
                                 serverbound_packets::v760_packets::V760::Login(packet) => {match packet {
@@ -185,20 +166,28 @@ async fn main() {
                                                 "".to_owned()
                                             }
                                         ));
-                                        codec.send_packet(clientbound_packets::v760_packets::LoginPacket::Disconnect { reason: serde_json::json!(
-                                            [
-                                                {
-                                                    "text": "Serveur Hors Ligne\n\n",
-                                                    "color": "red"
-                                                },
-                                                {
-                                                    "text": "Demande de démarrage reçue,\nle serveur devrait être disponible d'ici une minute",
-                                                    "color": "white"
+
+                                        if let Some(ref whitelist) = whitelist {
+                                            if let Some(uuid) = player_uuid {
+                                                if whitelist.contains(&uuid) {
+                                                    codec.send_packet(clientbound_packets::v760_packets::LoginPacket::Disconnect { reason: String::from(LOGIN_RESPONSE) }).await?;
+                                                    status(&format!("\x1b[38;5;14m{name}\x1b[0m is whitelisted. Disconnected player"));
+                                                    break Ok(true)
+                                                } else {
+                                                    codec.send_packet(clientbound_packets::v760_packets::LoginPacket::Disconnect { reason: String::from(LOGIN_RESPONSE) }).await?;
+                                                    status(&format!("\x1b[38;5;14m{name}\x1b[0m is not whitelsited. Disconnected player"));
                                                 }
-                                            ]
-                                        ).to_string()}).await?;
-                                        status("Disconnected player");
-                                        break io::Result::Ok(true)
+                                            } else {
+                                                status("Client did not provide a uuid: Can not check against whitelist");
+                                                codec.send_packet(clientbound_packets::v760_packets::LoginPacket::Disconnect {
+                                                    reason: "You are not whitelisted on this server".to_owned()
+                                                }).await?;
+                                            }
+                                        } else {
+                                            codec.send_packet(clientbound_packets::v760_packets::LoginPacket::Disconnect { reason: String::from(LOGIN_RESPONSE) }).await?;
+                                            status("Disconnected player");
+                                            break Ok(true)
+                                        }
                                     },
                                 }},
                                 other => break Err(io::Error::new(
@@ -326,17 +315,17 @@ async fn parse_whitelist(location: &PathBuf) -> Result<Vec<u128>, WhitelistParse
     let mut file_content = String::new();
     fs::File::open(location).await?.read_to_string(&mut file_content).await?;
 
-    let whitelist: HashMap<String, String> = match serde_json::from_str(&file_content) {
+    let whitelist: Vec<serde_json::Value> = match serde_json::from_str(&file_content) {
         Ok(parsed) => parsed,
         Err(err) => return Err(WhitelistParseError::ParseJson(err)),
     };
 
     let mut uuids = Vec::<u128>::with_capacity(whitelist.len());
 
-    for uuid in whitelist.keys() {
-        match uuid.replace('-', "").parse() {
+    for entry in whitelist {
+        match u128::from_str_radix(&entry["uuid"].to_string().replace(['-', '"'], ""), 16) {
             Ok(uuid) => uuids.push(uuid),
-            Err(_) => println!("\x1b[38;5;11mWarning: couldn't parse uuid {uuid} in whitelist\x1b[0m"),
+            Err(_) => println!("\x1b[38;5;11mWarning: couldn't parse whitelist because of this entry:\n{entry}\x1b[0m"),
         };
     }
 
