@@ -2,8 +2,8 @@ mod mc_protocol;
 use mc_protocol::{
     ServerCodec,
     ProtocolVersion,
-    serverbound_packets::{self, Serverbound},
-    clientbound_packets,
+    clientbound_packets::v760_packets as clientbound,
+    serverbound_packets::{v760_packets as serverbound, generic_packets, Serverbound},
     data_types::{McVarint, LengthPrefixed, get_length_prefixed_reader},
     McProtocol,
 };
@@ -136,28 +136,28 @@ async fn main() {
 
                         let output = async {loop {match codec.read_packet().await? {
                             Serverbound::Generic(packet) => match packet {
-                                serverbound_packets::generic_packets::Generic::ServerListPing(_) => {
+                                generic_packets::Generic::ServerListPing(_) => {
                                     status("Recieved legacy server list ping");
                                     break Ok(false)
                                 }
                                 _ => {},
                             },
                             Serverbound::V760(packet) => match packet {
-                                serverbound_packets::v760_packets::V760::Status(packet) => {match packet {
-                                    serverbound_packets::v761_packets::StatusPacket::StatusRequest{} => {
+                                serverbound::V760::Status(packet) => {match packet {
+                                    serverbound::StatusPacket::StatusRequest{} => {
                                         status("Requested status");
-                                        codec.send_packet(clientbound_packets::v760_packets::StatusPacket::StatusResponse{ json_response: String::from(STATUS_RESPONSE) }).await?;
+                                        codec.send_packet(clientbound::StatusPacket::StatusResponse{ json_response: String::from(STATUS_RESPONSE) }).await?;
                                         status("Sent status");
                                     },
-                                    serverbound_packets::v761_packets::StatusPacket::PingRequest{ payload } => {
+                                    serverbound::StatusPacket::PingRequest{ payload } => {
                                         status("Requested ping");
-                                        codec.send_packet(clientbound_packets::v760_packets::StatusPacket::PingResponse{ payload }).await?;
+                                        codec.send_packet(clientbound::StatusPacket::PingResponse{ payload }).await?;
                                         status("Sent pong");
                                         break Ok(false)
                                     },
                                 }},
-                                serverbound_packets::v760_packets::V760::Login(packet) => {match packet {
-                                    serverbound_packets::v760_packets::LoginPacket::LoginStart { name, sig_data: _, player_uuid } => {
+                                serverbound::V760::Login(packet) => {match packet {
+                                    serverbound::LoginPacket::LoginStart { name, sig_data: _, player_uuid } => {
                                         status(&format!(
                                             "Recieved login request from \x1b[38;5;14m{name}\x1b[0m{}",
                                             if let Some(uuid) = player_uuid {
@@ -170,21 +170,21 @@ async fn main() {
                                         if let Some(ref whitelist) = whitelist {
                                             if let Some(uuid) = player_uuid {
                                                 if whitelist.contains(&uuid) {
-                                                    codec.send_packet(clientbound_packets::v760_packets::LoginPacket::Disconnect { reason: String::from(LOGIN_RESPONSE) }).await?;
+                                                    codec.send_packet(clientbound::LoginPacket::Disconnect { reason: String::from(LOGIN_RESPONSE) }).await?;
                                                     status(&format!("\x1b[38;5;14m{name}\x1b[0m is whitelisted. Disconnected player"));
                                                     break Ok(true)
                                                 } else {
-                                                    codec.send_packet(clientbound_packets::v760_packets::LoginPacket::Disconnect { reason: String::from(LOGIN_RESPONSE) }).await?;
+                                                    codec.send_packet(clientbound::LoginPacket::Disconnect { reason: String::from(LOGIN_RESPONSE) }).await?;
                                                     status(&format!("\x1b[38;5;14m{name}\x1b[0m is not whitelsited. Disconnected player"));
                                                 }
                                             } else {
                                                 status("Client did not provide a uuid: Can not check against whitelist");
-                                                codec.send_packet(clientbound_packets::v760_packets::LoginPacket::Disconnect {
+                                                codec.send_packet(clientbound::LoginPacket::Disconnect {
                                                     reason: "You are not whitelisted on this server".to_owned()
                                                 }).await?;
                                             }
                                         } else {
-                                            codec.send_packet(clientbound_packets::v760_packets::LoginPacket::Disconnect { reason: String::from(LOGIN_RESPONSE) }).await?;
+                                            codec.send_packet(clientbound::LoginPacket::Disconnect { reason: String::from(LOGIN_RESPONSE) }).await?;
                                             status("Disconnected player");
                                             break Ok(true)
                                         }
@@ -356,11 +356,11 @@ async fn get_playercount(address: SocketAddrV4) -> Result<u64, PlayercountError>
     let mut writer = BufWriter::new(write_half);
 
     LengthPrefixed::from_mc_protocol(
-        serverbound_packets::generic_packets::HandshakePacket{
+        generic_packets::HandshakePacket{
             protocol_version: McVarint::from(760_i32),
             server_address: "asd".to_owned(),
             server_port: 25561,
-            next_state: serverbound_packets::generic_packets::NextState::Status,
+            next_state: generic_packets::NextState::Status,
         }
     ).await?
     .serialize_write(&mut writer).await?;
@@ -368,7 +368,7 @@ async fn get_playercount(address: SocketAddrV4) -> Result<u64, PlayercountError>
     writer.flush().await?;
 
     LengthPrefixed::from_mc_protocol(
-        serverbound_packets::v760_packets::StatusPacket::StatusRequest{}
+        serverbound::StatusPacket::StatusRequest{}
     ).await?
     .serialize_write(&mut writer).await?;
 
@@ -377,11 +377,11 @@ async fn get_playercount(address: SocketAddrV4) -> Result<u64, PlayercountError>
     let packet = {
         let mut packet_reader = get_length_prefixed_reader(&mut reader).await
             .map_err(|_| PlayercountError::Inbound)?;
-        clientbound_packets::v760_packets::StatusPacket::deserialize_read(&mut packet_reader).await
+        clientbound::StatusPacket::deserialize_read(&mut packet_reader).await
             .map_err(|_| PlayercountError::Inbound)?
     };
 
-    if let clientbound_packets::v760_packets::StatusPacket::StatusResponse{ json_response } = packet {
+    if let clientbound::StatusPacket::StatusResponse{ json_response } = packet {
         Ok(
             serde_json::from_str::<serde_json::Value>(&json_response)
             .map_err(|_| PlayercountError::Inbound)?
