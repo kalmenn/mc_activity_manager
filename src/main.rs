@@ -173,7 +173,9 @@ async fn main() {
                                                     status(&format!("\x1b[38;5;14m{name}\x1b[0m is whitelisted. Disconnected player"));
                                                     break Ok(true)
                                                 } else {
-                                                    codec.send_packet(clientbound::LoginPacket::Disconnect { reason: String::from(LOGIN_RESPONSE) }).await?;
+                                                    codec.send_packet(clientbound::LoginPacket::Disconnect {
+                                                        reason: "You are not whitelisted on this server".to_owned()
+                                                    }).await?;
                                                     status(&format!("\x1b[38;5;14m{name}\x1b[0m is not whitelsited. Disconnected player"));
                                                 }
                                             } else {
