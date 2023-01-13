@@ -12,7 +12,7 @@ use std::{
     net::{SocketAddrV4, Ipv4Addr}, 
     process::Stdio,
     time::{Duration, Instant},
-    path::PathBuf,
+    path::{PathBuf, Path},
     sync::Arc,
 };
 use tokio::{
@@ -57,9 +57,13 @@ struct Cli {
     #[arg(long, short, default_value_t = 5)]
     timeout: u32,
 
-    /// if set, activity manager will only start the minecraft server for players present in the provided whitelist.json.
-    #[arg(long, short)]
-    whitelist: Option<PathBuf>,
+    /// Root folder of your minecraft server.
+    #[arg(long, short = 'r')]
+    server_root: Option<PathBuf>,
+
+    /// if set, activity manager will only start the minecraft server for players present in the provided whitelist.json or ops.json.
+    #[arg(long, short, requires = "server_root")]
+    whitelist: bool,
 }
 
 const LOGIN_RESPONSE: &str = r#"[{"text":"Serveur Hors Ligne\n\n","color":"red"},{"text":"Demande de démarrage reçue,\nle serveur devrait être disponible d'ici une minute","color":"white"}]"#;
@@ -97,9 +101,8 @@ async fn main() {
                 }
             };
 
-            let whitelist = match &args.whitelist {
-                None => None,
-                Some(location) => match parse_whitelist(location).await {
+            let whitelist = if args.whitelist {
+                match parse_whitelist(args.server_root.as_ref().expect("server root should be provided when enabling whitelist")).await {
                     Ok(whitelist) => Some(Arc::new(whitelist)),
                     Err(WhitelistParseError::IO(err)) => {
                         println!("\x1b[38;5;11mCritical: Couldn't read whitelist. Got err: {err}\x1b[0m");
@@ -110,7 +113,7 @@ async fn main() {
                         std::process::exit(1);
                     },
                 }
-            };
+            } else { None };
 
             println!("\n\x1b[38;2;0;200;0mSpoofer listening on port {}\x1b[0m\n", args.port);
 
@@ -317,21 +320,40 @@ impl From<io::Error> for WhitelistParseError {
     }
 }
 
-async fn parse_whitelist(location: &PathBuf) -> Result<Vec<u128>, WhitelistParseError> {
-    let mut file_content = String::new();
-    fs::File::open(location).await?.read_to_string(&mut file_content).await?;
+async fn parse_whitelist(root_folder: &PathBuf) -> Result<Vec<u128>, WhitelistParseError> {
+    let mut whitelist_path = PathBuf::from(root_folder);
+    whitelist_path.push("whitelist.json");
 
-    let whitelist: Vec<serde_json::Value> = match serde_json::from_str(&file_content) {
+    let mut ops_path = PathBuf::from(root_folder);
+    ops_path.push("ops.json");
+
+    // let mut ops_file = PathBuf::from(root_folder);
+    // ops_file.push("ops.json");
+
+    let mut whitelist = get_uuids_from_json(&whitelist_path).await?;
+    whitelist.append(&mut get_uuids_from_json(&ops_path).await?);
+
+    whitelist.sort_unstable();
+    whitelist.dedup();
+
+    Ok(whitelist)
+}
+
+async fn get_uuids_from_json(file_path: &Path) -> Result<Vec<u128>, WhitelistParseError> {
+    let mut file_content = String::new();
+    fs::File::open(file_path).await?.read_to_string(&mut file_content).await?;
+
+    let objects: Vec<serde_json::Value> = match serde_json::from_str(&file_content) {
         Ok(parsed) => parsed,
         Err(err) => return Err(WhitelistParseError::ParseJson(err)),
     };
 
-    let mut uuids = Vec::<u128>::with_capacity(whitelist.len());
+    let mut uuids = Vec::<u128>::with_capacity(objects.len());
 
-    for entry in whitelist {
+    for entry in objects {
         match u128::from_str_radix(&entry["uuid"].to_string().replace(['-', '"'], ""), 16) {
             Ok(uuid) => uuids.push(uuid),
-            Err(_) => println!("\x1b[38;5;11mWarning: couldn't parse whitelist because of this entry:\n{entry}\x1b[0m"),
+            Err(_) => println!("\x1b[38;5;11mWarning: couldn't parse {} because of this entry:\n{entry}\x1b[0m", file_path.display()),
         };
     }
 
