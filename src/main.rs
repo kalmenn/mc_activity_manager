@@ -25,6 +25,8 @@ use tokio::{
 
 use clap::Parser;
 
+use chrono::Local;
+
 #[derive(Parser, Debug)]
 #[command(
     name = "Minecraft Server Activity Manager",
@@ -68,6 +70,8 @@ struct Cli {
 
 const LOGIN_RESPONSE: &str = r#"[{"text":"Serveur Hors Ligne\n\n","color":"red"},{"text":"Demande de démarrage reçue,\nle serveur devrait être disponible d'ici une minute","color":"white"}]"#;
 const STATUS_RESPONSE: &str = r#"{"description":[{"text":"Hors Ligne\n","color":"dark_red"},{"text":"Connectez vous pour démarrer le serveur","color":"dark_green"}],"version":{"name":"1.19.2","protocol":760}}"#;
+
+const TIME_FORMAT: &str = "[%H:%M:%S]";
 
 #[allow(clippy::single_match)]
 #[tokio::main(flavor = "current_thread")]
@@ -128,10 +132,10 @@ async fn main() {
 
                     task::spawn(async move {
                         let address = format!("\x1b[38;5;14m{address}\x1b[0m");
-                        println!("Connection from {}", address);
+                        println!("{} Connection from {}", Local::now().format(TIME_FORMAT), address);
 
                         let status = |message: &str| {
-                            println!("{} → {}", &address, message);
+                            println!("{} {} → {}", Local::now().format(TIME_FORMAT), &address, message);
                         };
 
                         let mut codec = ServerCodec::new(stream);
@@ -207,13 +211,13 @@ async fn main() {
 
                         match output {
                             Ok(should_we_start) => {
-                                println!("Closed connection to {address}");
+                                println!("{} Closed connection to {address}", Local::now().format(TIME_FORMAT));
                                 if should_we_start {
                                     start_sender.send(()).await.expect("channel shouldn't close");
                                 }
                             },
                             Err(err) => {
-                                println!("Killed connection to {address} on error: {err}");
+                                println!("{} Killed connection to {address} on error: {err}", Local::now().format(TIME_FORMAT));
                             }
                         };
                     });
