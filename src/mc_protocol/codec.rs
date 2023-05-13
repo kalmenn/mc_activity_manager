@@ -1,22 +1,19 @@
 use tokio::{
+    io::{self, AsyncWriteExt, BufReader, BufWriter},
     net::{
-        TcpStream,
         tcp::{OwnedReadHalf, OwnedWriteHalf},
+        TcpStream,
     },
-    io::{self, BufReader, BufWriter, AsyncWriteExt}
 };
 
 use crate::mc_protocol::{
-    data_types::{LengthPrefixed, get_length_prefixed_reader},
-    McProtocol,
-    ProtocolVersion,
-    ConnectionState,
-    ProtocolVersionLevelDeserialize,
+    data_types::{get_length_prefixed_reader, LengthPrefixed},
     serverbound_packets::{
         self,
-        Serverbound,
         generic_packets::{is_packet_server_list_ping, NextState},
+        Serverbound,
     },
+    ConnectionState, McProtocol, ProtocolVersion, ProtocolVersionLevelDeserialize,
 };
 
 pub struct ServerCodec {
@@ -29,7 +26,7 @@ pub struct ServerCodec {
 impl ServerCodec {
     pub fn new(stream: TcpStream) -> Self {
         let (read_half, write_half) = stream.into_split();
-        ServerCodec { 
+        ServerCodec {
             reader: BufReader::new(read_half),
             writer: BufWriter::new(write_half),
             connection_state: ConnectionState::Handshaking,
@@ -44,13 +41,18 @@ impl ServerCodec {
                     Serverbound::Generic(
                         serverbound_packets::generic_packets::Generic::ServerListPing(
                             serverbound_packets::generic_packets::ServerListPingPacket::deserialize_read(&mut self.reader).await?
-        )))}};
+        )));
+            }
+        };
 
         // This will only read a single packet
         let mut packet_reader = get_length_prefixed_reader(&mut self.reader).await?;
 
         let packet = if let ConnectionState::Handshaking = self.connection_state {
-            let packet = serverbound_packets::generic_packets::HandshakePacket::deserialize_read(&mut packet_reader).await?;
+            let packet = serverbound_packets::generic_packets::HandshakePacket::deserialize_read(
+                &mut packet_reader,
+            )
+            .await?;
 
             self.protocol_version = Some(i32::from(packet.protocol_version.clone()).try_into()?);
 
@@ -59,13 +61,17 @@ impl ServerCodec {
                 NextState::Login => ConnectionState::Login,
             };
 
-            Serverbound::Generic(serverbound_packets::generic_packets::Generic::Handshake(packet))
+            Serverbound::Generic(serverbound_packets::generic_packets::Generic::Handshake(
+                packet,
+            ))
         } else {
             Serverbound::deserialize_read(
                 &mut packet_reader,
                 self.connection_state,
-                self.protocol_version.expect("protocol version should be known by this point")
-            ).await?
+                self.protocol_version
+                    .expect("protocol version should be known by this point"),
+            )
+            .await?
         };
 
         let remaining_bytes = packet_reader.limit();
@@ -73,7 +79,7 @@ impl ServerCodec {
             return Err(io::Error::new(
                 io::ErrorKind::Other,
                 format!("{remaining_bytes} bytes were not consumed by the implementation of deserialize_read")
-            ))
+            ));
         }
 
         Ok(packet)

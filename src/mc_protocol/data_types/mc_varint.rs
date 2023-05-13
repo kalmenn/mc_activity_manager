@@ -1,8 +1,4 @@
-use tokio::io::{
-    self,
-    AsyncReadExt,
-    AsyncWriteExt,
-};
+use tokio::io::{self, AsyncReadExt, AsyncWriteExt};
 
 use crate::mc_protocol::McProtocol;
 
@@ -13,16 +9,16 @@ pub struct McVarint(Vec<u8>);
 impl McProtocol for McVarint {
     async fn serialize_write<W>(&self, writer: &mut W) -> io::Result<()>
     where
-        W: io::AsyncWrite + Unpin + Send
+        W: io::AsyncWrite + Unpin + Send,
     {
         writer.write_all(&self.0).await?;
         Ok(())
     }
 
-    async fn deserialize_read<R>(reader: &mut R) -> io::Result<Self> 
+    async fn deserialize_read<R>(reader: &mut R) -> io::Result<Self>
     where
         Self: std::marker::Sized,
-        R: io::AsyncRead + Unpin + Send
+        R: io::AsyncRead + Unpin + Send,
     {
         let mut bytes = Vec::<u8>::new();
 
@@ -30,9 +26,14 @@ impl McProtocol for McVarint {
             let byte = reader.read_u8().await?;
             bytes.push(byte);
             if bytes.len() > 5 {
-                return Err(io::Error::new(io::ErrorKind::InvalidData, "varints can't be over 5 bytes long"))
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    "varints can't be over 5 bytes long",
+                ));
             }
-            if byte < 128 {break}
+            if byte < 128 {
+                break;
+            }
         }
 
         Ok(McVarint(bytes))
@@ -42,7 +43,7 @@ impl McProtocol for McVarint {
 impl From<i32> for McVarint {
     fn from(value: i32) -> Self {
         if value == 0 {
-            return McVarint(vec![0])
+            return McVarint(vec![0]);
         }
 
         // Create a vector of the right size
@@ -56,7 +57,7 @@ impl From<i32> for McVarint {
         }
 
         // Add continuation bits
-        for i in 0..bytes.len()-1 {
+        for i in 0..bytes.len() - 1 {
             bytes[i] += 128;
         }
 
@@ -87,10 +88,12 @@ impl TryFrom<McVarint> for u32 {
         let value_i32: i32 = value.into();
         Ok(match value_i32.try_into() {
             Ok(value) => value,
-            Err(_) => return Err(io::Error::new(
-                io::ErrorKind::InvalidData,
-                format!("value {value_i32} outside of u32 bounds")
-            ))
+            Err(_) => {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    format!("value {value_i32} outside of u32 bounds"),
+                ))
+            }
         })
     }
 }
@@ -101,10 +104,12 @@ impl TryFrom<u32> for McVarint {
     fn try_from(value: u32) -> Result<Self, Self::Error> {
         let value_i32: i32 = match value.try_into() {
             Ok(value) => value,
-            Err(_) => return Err(io::Error::new(
-                io::ErrorKind::InvalidData,
-                format!("value {value} outside of i32 bounds")
-            ))
+            Err(_) => {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    format!("value {value} outside of i32 bounds"),
+                ))
+            }
         };
         Ok(McVarint::from(value_i32))
     }
@@ -112,8 +117,8 @@ impl TryFrom<u32> for McVarint {
 
 #[cfg(test)]
 mod tests {
-    use crate::mc_protocol::McProtocol;
     use super::*;
+    use crate::mc_protocol::McProtocol;
     use tokio::io::{BufReader, BufWriter};
 
     #[tokio::test]

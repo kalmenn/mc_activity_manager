@@ -5,10 +5,8 @@ use v760_packets::V760;
 use v761_packets::V761;
 
 use crate::mc_protocol::{
-    ConnectionState,
-    ProtocolVersion,
+    ConnectionState, ConnectionStateLevelDeserialize, ProtocolVersion,
     ProtocolVersionLevelDeserialize,
-    ConnectionStateLevelDeserialize,
 };
 use tokio::io;
 
@@ -20,14 +18,22 @@ pub enum Clientbound {
 
 #[async_trait::async_trait]
 impl ProtocolVersionLevelDeserialize for Clientbound {
-    async fn deserialize_read<R>(reader: &mut R, connection_state: ConnectionState, protocol_version: ProtocolVersion) -> io::Result<Self> 
+    async fn deserialize_read<R>(
+        reader: &mut R,
+        connection_state: ConnectionState,
+        protocol_version: ProtocolVersion,
+    ) -> io::Result<Self>
     where
         Self: std::marker::Sized,
-        R: io::AsyncRead + Unpin + Send
+        R: io::AsyncRead + Unpin + Send,
     {
         Ok(match protocol_version {
-            ProtocolVersion::V760 => Self::V760(V760::deserialize_read(reader, connection_state).await?),
-            ProtocolVersion::V761 => Self::V761(V761::deserialize_read(reader, connection_state).await?),
+            ProtocolVersion::V760 => {
+                Self::V760(V760::deserialize_read(reader, connection_state).await?)
+            }
+            ProtocolVersion::V761 => {
+                Self::V761(V761::deserialize_read(reader, connection_state).await?)
+            }
         })
     }
 }

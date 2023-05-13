@@ -1,45 +1,48 @@
+pub mod clientbound_packets;
 pub mod data_types;
 pub mod serverbound_packets;
-pub mod clientbound_packets;
 
 mod codec;
 pub use codec::ServerCodec;
 
+use std::fmt::{Debug, Display};
+use std::marker::{Send, Unpin};
 use tokio::io;
-use std::fmt::{Display, Debug};
-use std::marker::{Unpin, Send};
 
 /// Something is McProtocol if it can serialize / deserialize itself
 /// according to the minecraft server protocol
-#[async_trait::async_trait]  
+#[async_trait::async_trait]
 pub trait McProtocol {
     async fn serialize_write<W>(&self, writer: &mut W) -> io::Result<()>
     where
-        W: io::AsyncWrite + Unpin + Send
-    ;
-    async fn deserialize_read<R>(reader: &mut R) -> io::Result<Self> 
+        W: io::AsyncWrite + Unpin + Send;
+    async fn deserialize_read<R>(reader: &mut R) -> io::Result<Self>
     where
         Self: std::marker::Sized,
-        R: io::AsyncRead + Unpin + Send
-    ;
+        R: io::AsyncRead + Unpin + Send;
 }
 
 #[async_trait::async_trait]
 pub trait ProtocolVersionLevelDeserialize {
-    async fn deserialize_read<R>(reader: &mut R, connection_state: ConnectionState, protocol_version: ProtocolVersion) -> io::Result<Self> 
+    async fn deserialize_read<R>(
+        reader: &mut R,
+        connection_state: ConnectionState,
+        protocol_version: ProtocolVersion,
+    ) -> io::Result<Self>
     where
         Self: std::marker::Sized,
-        R: io::AsyncRead + Unpin + Send
-    ;
+        R: io::AsyncRead + Unpin + Send;
 }
 
 #[async_trait::async_trait]
 pub trait ConnectionStateLevelDeserialize {
-    async fn deserialize_read<R>(reader: &mut R, connection_state: ConnectionState) -> io::Result<Self> 
+    async fn deserialize_read<R>(
+        reader: &mut R,
+        connection_state: ConnectionState,
+    ) -> io::Result<Self>
     where
         Self: std::marker::Sized,
-        R: io::AsyncRead + Unpin + Send
-    ;
+        R: io::AsyncRead + Unpin + Send;
 }
 
 /// Encodes the currently supported protocol versions
@@ -58,7 +61,7 @@ impl TryFrom<i32> for ProtocolVersion {
             761 => Ok(Self::V761),
             other => Err(Self::Error::new(
                 io::ErrorKind::Other,
-                format!("protocol version {other} not supported")
+                format!("protocol version {other} not supported"),
             )),
         }
     }

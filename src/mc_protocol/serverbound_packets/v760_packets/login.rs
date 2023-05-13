@@ -1,6 +1,6 @@
 use tokio::io::{self, AsyncReadExt, AsyncWriteExt};
 
-use crate::mc_protocol::data_types::{McVarint, LengthPrefixed};
+use crate::mc_protocol::data_types::{LengthPrefixed, McVarint};
 
 // https://wiki.vg/index.php?title=Protocol&oldid=17873#Login_Start
 
@@ -10,7 +10,7 @@ pub enum LoginPacket {
         name: String,
         sig_data: Option<SigData>,
         player_uuid: Option<u128>,
-    }
+    },
 }
 
 pub struct SigData {
@@ -33,14 +33,20 @@ impl std::fmt::Debug for SigData {
 impl crate::mc_protocol::McProtocol for LoginPacket {
     async fn serialize_write<W>(&self, writer: &mut W) -> io::Result<()>
     where
-        W: io::AsyncWrite + Unpin + Send
+        W: io::AsyncWrite + Unpin + Send,
     {
         match self {
-            Self::LoginStart{name, sig_data, player_uuid} => {
-                if name.len() > 16 {return Err(io::Error::new(
-                    io::ErrorKind::InvalidData,
-                    "Player name can't be over 16 characters long"
-                ))};
+            Self::LoginStart {
+                name,
+                sig_data,
+                player_uuid,
+            } => {
+                if name.len() > 16 {
+                    return Err(io::Error::new(
+                        io::ErrorKind::InvalidData,
+                        "Player name can't be over 16 characters long",
+                    ));
+                };
                 name.serialize_write(writer).await?;
 
                 if let Some(sig_data) = sig_data {
@@ -50,20 +56,28 @@ impl crate::mc_protocol::McProtocol for LoginPacket {
 
                     McVarint::from(match i32::try_from(sig_data.public_key.len()) {
                         Ok(value) => value,
-                        Err(_) => return Err(io::Error::new(
-                            io::ErrorKind::InvalidInput,
-                            "public key length was outside of i32 bounds"
-                        ))
-                    }).serialize_write(writer).await?;
+                        Err(_) => {
+                            return Err(io::Error::new(
+                                io::ErrorKind::InvalidInput,
+                                "public key length was outside of i32 bounds",
+                            ))
+                        }
+                    })
+                    .serialize_write(writer)
+                    .await?;
                     writer.write_all(&sig_data.public_key).await?;
 
                     McVarint::from(match i32::try_from(sig_data.signature.len()) {
                         Ok(value) => value,
-                        Err(_) => return Err(io::Error::new(
-                            io::ErrorKind::InvalidInput,
-                            "signature length was outside of i32 bounds"
-                        ))
-                    }).serialize_write(writer).await?;
+                        Err(_) => {
+                            return Err(io::Error::new(
+                                io::ErrorKind::InvalidInput,
+                                "signature length was outside of i32 bounds",
+                            ))
+                        }
+                    })
+                    .serialize_write(writer)
+                    .await?;
                     writer.write_all(&sig_data.signature).await?;
                 } else {
                     writer.write_u8(0).await?;
@@ -75,57 +89,73 @@ impl crate::mc_protocol::McProtocol for LoginPacket {
                 } else {
                     writer.write_u8(0).await?;
                 }
-            },
+            }
         }
         Ok(())
     }
 
-    async fn deserialize_read<R>(reader: &mut R) -> io::Result<Self> 
+    async fn deserialize_read<R>(reader: &mut R) -> io::Result<Self>
     where
         Self: std::marker::Sized,
-        R: io::AsyncRead + Unpin + Send
+        R: io::AsyncRead + Unpin + Send,
     {
         match reader.read_u8().await? {
             0 => {
                 let name = String::deserialize_read(reader).await?;
-                if name.len() > 16 {return Err(io::Error::new(
-                    io::ErrorKind::InvalidData,
-                    "Player name can't be over 16 characters long"
-                ))}
+                if name.len() > 16 {
+                    return Err(io::Error::new(
+                        io::ErrorKind::InvalidData,
+                        "Player name can't be over 16 characters long",
+                    ));
+                }
                 let sig_data = match reader.read_u8().await? {
                     0 => None,
                     1 => {
                         let timestamp = reader.read_i64().await?;
-                        let public_key: Vec<u8> = LengthPrefixed::deserialize_read(reader).await?.into();
-                        let signature: Vec<u8> = LengthPrefixed::deserialize_read(reader).await?.into();
-                        Some(SigData { timestamp, public_key, signature })
-                    },
-                    other => return Err(io::Error::new(
-                        io::ErrorKind::InvalidData,
-                        format!("unexpected boolean variant: {other}")
-                    ))
+                        let public_key: Vec<u8> =
+                            LengthPrefixed::deserialize_read(reader).await?.into();
+                        let signature: Vec<u8> =
+                            LengthPrefixed::deserialize_read(reader).await?.into();
+                        Some(SigData {
+                            timestamp,
+                            public_key,
+                            signature,
+                        })
+                    }
+                    other => {
+                        return Err(io::Error::new(
+                            io::ErrorKind::InvalidData,
+                            format!("unexpected boolean variant: {other}"),
+                        ))
+                    }
                 };
                 let player_uuid = match reader.read_u8().await? {
                     0 => None,
                     1 => Some(reader.read_u128().await?),
-                    other => return Err(io::Error::new(
-                        io::ErrorKind::InvalidData,
-                        format!("unexpected boolean variant: {other}")
-                    )),
+                    other => {
+                        return Err(io::Error::new(
+                            io::ErrorKind::InvalidData,
+                            format!("unexpected boolean variant: {other}"),
+                        ))
+                    }
                 };
-                Ok(LoginPacket::LoginStart { name, sig_data, player_uuid })
-            },
+                Ok(LoginPacket::LoginStart {
+                    name,
+                    sig_data,
+                    player_uuid,
+                })
+            }
             1 => Err(io::Error::new(
                 io::ErrorKind::Other,
-                "Deserializing encryption response packets is not supported"
+                "Deserializing encryption response packets is not supported",
             )),
             2 => Err(io::Error::new(
                 io::ErrorKind::Other,
-                "Deserializing login plugin response packet is not supported"
+                "Deserializing login plugin response packet is not supported",
             )),
             other => Err(io::Error::new(
                 io::ErrorKind::InvalidData,
-                format!("unexpected packet ID: {other}")
+                format!("unexpected packet ID: {other}"),
             )),
         }
     }
